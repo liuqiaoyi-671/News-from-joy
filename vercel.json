@@ -1,0 +1,20 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/premarket/730",
+      "schedule": "30 23 * * 0-4"
+    },
+    {
+      "path": "/api/cron/premarket/800",
+      "schedule": "0 0 * * 1-5"
+    },
+    {
+      "path": "/api/cron/premarket/830",
+      "schedule": "30 0 * * 1-5"
+    },
+    {
+      "path": "/api/cron/postmarket",
+      "schedule": "10 8 * * 1-5"
+    }
+  ]
+}
