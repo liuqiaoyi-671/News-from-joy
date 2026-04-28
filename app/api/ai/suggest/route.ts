@@ -99,8 +99,8 @@ export async function GET(req: NextRequest) {
 }
 
 async function runSuggest(q: string): Promise<{ ids: string[]; label: string; source?: string }> {
-  const key = process.env.GEMINI_API_KEY
-  if (!key || key.startsWith('你的')) {
+  const key = process.env.DEEPSEEK_API_KEY
+  if (!key) {
     // Fallback to presets
     const qLower = q.toLowerCase()
     for (const [topic, ids] of Object.entries(TOPIC_PRESETS)) {
@@ -133,11 +133,20 @@ ${indicatorList}
 
   try {
     const res = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
-      { contents: [{ parts: [{ text: prompt }] }] },
-      { timeout: 20000 }
+      'https://api.deepseek.com/chat/completions',
+      {
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 512,
+        stream: false,
+      },
+      {
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        timeout: 20000,
+      }
     )
-    const text: string = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
+    const text: string = res.data?.choices?.[0]?.message?.content || '[]'
     const match = text.match(/\[[\s\S]*?\]/)
     if (match) {
       const ids: string[] = JSON.parse(match[0]).filter((id: string) => INDICATOR_CATALOG[id])

@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { createHmac } from 'crypto'
 import fs from 'fs'
 import path from 'path'
 
@@ -72,35 +73,99 @@ function persistAudienceId(id: string) {
 
 export interface Subscriber {
   email: string
-  /** "730" | "800" | "830" — 偏好的简报推送时间 */
+  /** "730" | "800" | "830" — 盘前推送时间，"none"=不订阅盘前 */
   deliveryTime: string
+  /** 是否订阅盘后日报（每日 16:10 一次） */
+  wantsPostmarket: boolean
   unsubscribed: boolean
 }
 
-/** 订阅一位邮箱（已存在则更新偏好） */
-export async function addSubscriber(email: string, deliveryTime: string): Promise<void> {
+/**
+ * 订阅一位邮箱（已存在则更新偏好）
+ *
+ * Resend Contact 字段映射：
+ *   firstName  → 盘前时间偏好（"730"/"800"/"830"/"none"）
+ *   lastName   → 盘后偏好（"post" 或空）
+ */
+export async function addSubscriber(
+  email: string,
+  opts: { deliveryTime?: string; wantsPostmarket?: boolean } = {},
+): Promise<void> {
   const audienceId = await ensureAudienceId()
   if (!audienceId) throw new Error('Resend audience 不可用')
   const resend = getResend()
-  // Resend create 是 upsert：同 email 重复创建不会报错而是更新
   await resend.contacts.create({
     audienceId,
     email,
-    firstName: deliveryTime,
+    firstName: opts.deliveryTime || 'none',
+    lastName: opts.wantsPostmarket ? 'post' : '',
     unsubscribed: false,
   })
 }
 
-/** 列出此时间段（"730"/"800"/"830"）所有活跃订阅者邮箱 */
-export async function getSubscribersByTime(time: string): Promise<string[]> {
+type ContactRow = {
+  email: string
+  first_name?: string
+  last_name?: string
+  unsubscribed?: boolean
+}
+
+async function listAllContacts(): Promise<ContactRow[]> {
   const audienceId = await ensureAudienceId()
   if (!audienceId) return []
   const resend = getResend()
   const { data } = await resend.contacts.list({ audienceId })
-  type Row = { email: string; first_name?: string; unsubscribed?: boolean }
-  const rows = (data as { data?: Row[] })?.data || []
+  return ((data as { data?: ContactRow[] })?.data || []).filter(r => !r.unsubscribed)
+}
+
+/** 列出此时间段（"730"/"800"/"830"）订阅了【盘前】简报的邮箱 */
+export async function getSubscribersByTime(time: string): Promise<string[]> {
+  const rows = await listAllContacts()
   return rows
-    .filter((r) => !r.unsubscribed)
-    .filter((r) => (r.first_name || '800') === time)
-    .map((r) => r.email)
+    .filter(r => (r.first_name || 'none') === time)
+    .map(r => r.email)
+}
+
+/** 列出所有订阅了【盘后】日报的邮箱（每天统一发一次，无时间分流） */
+export async function getPostmarketSubscribers(): Promise<string[]> {
+  const rows = await listAllContacts()
+  return rows
+    .filter(r => (r.last_name || '') === 'post')
+    .map(r => r.email)
+}
+
+// ── 退订 ───────────────────────────────────────────────────────────────────────
+
+/**
+ * 退订某邮箱：在 Resend audience 中将其标记为 unsubscribed。
+ * 使用 upsert（contacts.create with unsubscribed:true）避免需要先查 contactId。
+ */
+export async function unsubscribeContact(email: string): Promise<void> {
+  const audienceId = await ensureAudienceId()
+  if (!audienceId) throw new Error('Resend audience 不可用')
+  const resend = getResend()
+  await resend.contacts.create({ audienceId, email, unsubscribed: true })
+}
+
+// ── 退订链接生成 ───────────────────────────────────────────────────────────────
+
+/** 用 CRON_SECRET 对 email 做 HMAC-SHA256，生成 URL 安全令牌 */
+export function signUnsubscribeToken(email: string): string {
+  const secret = process.env.CRON_SECRET || 'unsub-secret'
+  return createHmac('sha256', secret).update(email).digest('base64url')
+}
+
+/** 验证退订令牌（时间无关，只要 secret 一致即可） */
+export function verifyUnsubscribeToken(email: string, token: string): boolean {
+  return signUnsubscribeToken(email) === token
+}
+
+/** 构造个人化退订链接，嵌入所有发出的邮件 */
+export function buildUnsubscribeUrl(email: string): string {
+  const base =
+    process.env.SITE_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3001')
+  const e = Buffer.from(email).toString('base64url')
+  const t = signUnsubscribeToken(email)
+  return `${base}/api/unsubscribe?e=${e}&t=${t}`
 }

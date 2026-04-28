@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# build output
+.next/
+out/
+dist/
+*.tsbuildinfo
+
+# env (contains API keys — set in Vercel dashboard instead)
+.env
+.env.local
+.env*.local
+
+# generated snapshot data
+public/sentiment-data.json
+public/news-data.json
+
+# system / editor
+.DS_Store
+.vscode/
+.idea/
+
+# claude harness
+.claude/
+.api-bak/

@@ -1,6 +1,6 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
-import { Loader2, Sparkles, Languages, RefreshCw, ExternalLink, Search, X } from 'lucide-react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { Loader2, Languages, RefreshCw, ExternalLink, Search, X } from 'lucide-react'
 import SectorSelector from '@/components/SectorSelector'
 
 interface NewsItem {
@@ -12,6 +12,31 @@ interface NewsItem {
   sectors: string[]
   lang: 'zh' | 'en'
   translatedTitle?: string
+}
+
+// localStorage 缓存版本号，结构改变时递增可自动清空旧缓存
+const CACHE_VERSION = 'v2'
+const CACHE_PREFIX = `news-cache-${CACHE_VERSION}`
+const CACHE_MAX_AGE_MS = 30 * 60 * 1000  // 最长用 30 min 内的本地缓存
+
+function cacheKey(sector: string, query: string) {
+  return `${CACHE_PREFIX}:${sector}:${query}`
+}
+
+function readCache(sector: string, query: string): NewsItem[] | null {
+  try {
+    const raw = localStorage.getItem(cacheKey(sector, query))
+    if (!raw) return null
+    const { articles, ts } = JSON.parse(raw) as { articles: NewsItem[]; ts: number }
+    if (Date.now() - ts > CACHE_MAX_AGE_MS) return null   // 过期
+    return articles
+  } catch { return null }
+}
+
+function writeCache(sector: string, query: string, articles: NewsItem[]) {
+  try {
+    localStorage.setItem(cacheKey(sector, query), JSON.stringify({ articles, ts: Date.now() }))
+  } catch { /* storage full — ignore */ }
 }
 
 function timeAgo(s: string): string {
@@ -31,41 +56,56 @@ function timeAgo(s: string): string {
 
 export default function NewsPage() {
   const [sector, setSector] = useState('all')
-  const [query, setQuery] = useState('')          // 已生效的搜索关键词
-  const [queryInput, setQueryInput] = useState('') // 输入框内容
+  const [query, setQuery] = useState('')
+  const [queryInput, setQueryInput] = useState('')
   const [articles, setArticles] = useState<NewsItem[]>([])
-  const [summary, setSummary] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [loading, setLoading] = useState(false)       // 完全没有本地缓存时的全屏 spinner
+  const [refreshing, setRefreshing] = useState(false) // 有本地缓存时的后台刷新状态
   const [translateLoading, setTranslateLoading] = useState(false)
   const [updatedAt, setUpdatedAt] = useState('')
+  const fetchId = useRef(0)  // 防止旧请求结果覆盖新请求
 
-  const load = useCallback(async (s: string, q: string, withTranslate = false) => {
-    setLoading(true)
-    setSummary(null)
+  const load = useCallback(async (s: string, q: string, withTranslate = false, forceRefresh = false) => {
+    const id = ++fetchId.current
+
+    // 1. 先读本地缓存，立刻渲染（翻译和强刷除外）
+    if (!withTranslate && !forceRefresh) {
+      const cached = readCache(s, q)
+      if (cached) {
+        setArticles(cached)
+        setLoading(false)
+        setRefreshing(true)   // 有缓存 → 只显示角落小图标
+      } else {
+        setLoading(true)      // 无缓存 → 显示全屏 spinner
+      }
+    } else {
+      setLoading(true)
+    }
+
+    // 2. 后台获取最新数据
     try {
       const params = new URLSearchParams({ sector: s, noai: '1' })
       if (q) params.set('q', q)
       if (withTranslate) params.set('translate', '1')
-      const res = await fetch(`/api/news?${params}`, { cache: 'no-store' }).then((r) => r.json())
-      setArticles(res.articles || [])
+
+      let res: { articles?: unknown[]; updatedAt?: string } = {}
+      try {
+        res = await fetch(`/api/news?${params}`, { cache: 'no-store' }).then(r => r.json())
+      } catch {
+        for (const u of ['./news-data.json', '/news-data.json']) {
+          try { const r = await fetch(u); if (r.ok) { res = await r.json(); break } } catch { /* try next */ }
+        }
+      }
+
+      if (fetchId.current !== id) return  // 已被更新的请求取代，丢弃
+      const fresh = (res.articles as NewsItem[]) || []
+      setArticles(fresh)
       setUpdatedAt(res.updatedAt || '')
+      if (!withTranslate) writeCache(s, q, fresh)
     } finally {
-      setLoading(false)
+      if (fetchId.current === id) { setLoading(false); setRefreshing(false) }
     }
   }, [])
-
-  const generateSummary = useCallback(async () => {
-    setSummaryLoading(true)
-    try {
-      const params = new URLSearchParams({ sector })
-      if (query) params.set('q', query)
-      const res = await fetch(`/api/news?${params}`, { cache: 'no-store' }).then((r) => r.json())
-      setSummary(res.summary || '摘要生成失败，请稍后重试')
-    } finally {
-      setSummaryLoading(false)
-    }
-  }, [sector, query])
 
   const translateAll = useCallback(async () => {
     setTranslateLoading(true)
@@ -75,24 +115,11 @@ export default function NewsPage() {
 
   useEffect(() => { load(sector, query) }, [sector, query, load])
 
-  function handleSectorChange(s: string) {
-    setSector(s)
-    setSummary(null)
-  }
+  function handleSectorChange(s: string) { setSector(s) }
+  function handleSearchSubmit(e: React.FormEvent) { e.preventDefault(); setQuery(queryInput.trim()) }
+  function clearSearch() { setQueryInput(''); setQuery('') }
 
-  function handleSearchSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setQuery(queryInput.trim())
-    setSummary(null)
-  }
-
-  function clearSearch() {
-    setQueryInput('')
-    setQuery('')
-    setSummary(null)
-  }
-
-  const enCount = articles.filter((a) => a.lang === 'en' && !a.translatedTitle).length
+  const enCount = articles.filter(a => a.lang === 'en' && !a.translatedTitle).length
 
   return (
     <div className="min-h-screen bg-bg-primary">
@@ -104,36 +131,26 @@ export default function NewsPage() {
           <input
             type="text"
             value={queryInput}
-            onChange={(e) => setQueryInput(e.target.value)}
+            onChange={e => setQueryInput(e.target.value)}
             placeholder="搜索关键词（全网检索：东财 + 新浪 + 本地资讯池）"
             className="w-full pl-10 pr-20 py-2.5 bg-bg-card border border-border rounded-xl text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-accent"
           />
           {query && (
-            <button
-              type="button"
-              onClick={clearSearch}
-              className="absolute right-12 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
-              title="清除搜索"
-            >
+            <button type="button" onClick={clearSearch} className="absolute right-12 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
               <X size={14} />
             </button>
           )}
-          <button
-            type="submit"
-            className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-accent text-white text-xs rounded-md hover:bg-blue-500"
-          >
+          <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-accent text-white text-xs rounded-md hover:bg-blue-500">
             搜索
           </button>
         </form>
 
-        {/* 当前搜索状态 */}
+        {/* 搜索状态 */}
         {query && (
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <span>搜索 <span className="text-accent font-medium">"{query}"</span></span>
             <span className="text-gray-700">·</span>
-            <span>{articles.length} 条结果（含全网实时检索）</span>
-            {sector !== 'all' && <span className="text-gray-700">·</span>}
-            {sector !== 'all' && <span>板块筛选叠加</span>}
+            <span>{articles.length} 条结果</span>
           </div>
         )}
 
@@ -147,40 +164,26 @@ export default function NewsPage() {
                 disabled={translateLoading}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-bg-card border border-border text-gray-400 hover:border-accent hover:text-accent transition-colors"
               >
-                {translateLoading
-                  ? <Loader2 size={12} className="animate-spin" />
-                  : <Languages size={12} />}
+                {translateLoading ? <Loader2 size={12} className="animate-spin" /> : <Languages size={12} />}
                 翻译英文标题 ({enCount})
               </button>
             )}
             <button
-              onClick={generateSummary}
-              disabled={summaryLoading || articles.length === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-accent/10 text-accent hover:bg-accent/20 disabled:opacity-40 transition-colors"
+              onClick={() => load(sector, query, false, true)}
+              disabled={loading || refreshing}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 disabled:opacity-40"
             >
-              {summaryLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-              AI 摘要
-            </button>
-            <button onClick={() => load(sector, query)} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300">
-              <RefreshCw size={12} />刷新
+              <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+              {refreshing ? '刷新中' : '刷新'}
             </button>
           </div>
         </div>
 
-        {/* AI Summary */}
-        {summary && (
-          <div className="bg-bg-card border border-accent/30 rounded-xl p-5">
-            <div className="flex items-center gap-2 mb-3 text-accent text-xs font-semibold">
-              <Sparkles size={13} />AI 资讯摘要
-            </div>
-            <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">{summary}</p>
-          </div>
-        )}
-
-        {/* Updated time */}
-        {updatedAt && (
-          <div className="text-xs text-gray-700">
-            更新于 {new Date(updatedAt).toLocaleString('zh-CN')}
+        {/* 更新时间（有后台刷新时显示小图标） */}
+        {(updatedAt || refreshing) && (
+          <div className="flex items-center gap-1.5 text-xs text-gray-700">
+            {refreshing && <Loader2 size={10} className="animate-spin" />}
+            {updatedAt && <span>更新于 {new Date(updatedAt).toLocaleString('zh-CN')}</span>}
           </div>
         )}
 
@@ -220,7 +223,7 @@ export default function NewsPage() {
                       {item.pubDate && (
                         <span className="text-[10px] text-gray-600">{timeAgo(item.pubDate)}</span>
                       )}
-                      {item.sectors.slice(0, 2).map((s) => (
+                      {item.sectors.slice(0, 2).map(s => (
                         <span key={s} className="text-[10px] bg-accent/10 text-accent px-1.5 py-0.5 rounded">{s}</span>
                       ))}
                     </div>
@@ -229,7 +232,7 @@ export default function NewsPage() {
                 </div>
               </a>
             ))}
-            {articles.length === 0 && !loading && (
+            {articles.length === 0 && (
               <div className="text-center py-16 text-gray-600">
                 <p>暂无相关资讯</p>
                 <p className="text-xs mt-1">请检查网络连接或稍后重试</p>
@@ -240,7 +243,7 @@ export default function NewsPage() {
       </main>
 
       <footer className="border-t border-border mt-8 py-5 text-center text-xs text-gray-700">
-        资讯来源：新浪财经 · 东方财富 · 证券时报 · Reuters · CNBC · AI 内容仅供参考
+        资讯来源：新浪财经 · 东方财富 · 财联社 · Reuters · CNBC · AI 内容仅供参考
       </footer>
     </div>
   )

@@ -18,12 +18,22 @@ export default function Navigation() {
             <Link
               href="/news"
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                path === '/news' || path === '/'
+                path === '/news'
                   ? 'bg-accent text-white'
                   : 'text-gray-400 hover:text-gray-200 hover:bg-bg-card'
               }`}
             >
               📰 资讯
+            </Link>
+            <Link
+              href="/sentiment"
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                path === '/sentiment'
+                  ? 'bg-accent text-white'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-bg-card'
+              }`}
+            >
+              📊 情绪雷达
             </Link>
           </nav>
         </div>

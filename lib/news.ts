@@ -1,6 +1,7 @@
 import Parser from 'rss-parser'
 import axios from 'axios'
 import { fetchChineseNews, searchByKeyword, type CNewsItem } from './cnews'
+import { mergeArticles, getArticles, storeSize } from './article-store'
 
 const parser = new Parser({ timeout: 5000 })
 
@@ -219,11 +220,44 @@ function filterByRecency(items: NewsItem[]): NewsItem[] {
   })
 }
 
-export function matchSectors(text: string): string[] {
-  const lower = text.toLowerCase()
-  return SECTORS
-    .filter(s => s.id !== 'all' && s.keywords?.some(kw => lower.includes(kw.toLowerCase())))
+/** 统计 needle 在 haystack 中非重叠出现次数 */
+function countOccurrences(haystack: string, needle: string): number {
+  let count = 0, idx = 0
+  while ((idx = haystack.indexOf(needle, idx)) !== -1) { count++; idx += needle.length }
+  return count
+}
+
+/**
+ * 板块匹配（三档精度）：
+ *   1. 标题命中 → 直接返回（精度最高）
+ *   2. 标题无命中且有 sourceSector → 用搜索关键词对应板块（次之）
+ *   3. 最后才看内容，且关键词须出现 ≥2 次（减少偶然噪音）
+ */
+export function matchSectors(title: string, content?: string): string[] {
+  const tl = title.toLowerCase()
+  const fromTitle = SECTORS
+    .filter(s => s.id !== 'all' && s.keywords?.some(kw => tl.includes(kw.toLowerCase())))
     .map(s => s.id)
+  if (fromTitle.length > 0) return fromTitle
+
+  if (!content) return []
+  const cl = content.toLowerCase()
+  return SECTORS
+    .filter(s => s.id !== 'all' && s.keywords?.some(
+      kw => countOccurrences(cl, kw.toLowerCase()) >= 2
+    ))
+    .map(s => s.id)
+}
+
+/**
+ * 带 sourceSector 提示的板块构建（用于爬虫搜索结果）：
+ * 标题有匹配 → 用标题结果；否则用 sourceSector 提示；再否则内容兜底
+ */
+function buildSectors(title: string, content: string, sourceSector?: string): string[] {
+  const fromTitle = matchSectors(title)          // 只看标题
+  if (fromTitle.length > 0) return fromTitle
+  if (sourceSector) return [sourceSector]        // 搜索关键词提示
+  return matchSectors(title, content)            // 内容兜底（≥2 次）
 }
 
 // ─── 英文 RSS：通用 ───────────────────────────────────────────────────────────
@@ -316,7 +350,7 @@ const EN_SECTOR_FEEDS: Record<string, { url: string; label: string }[]> = {
   ],
 }
 
-async function fetchRss(url: string, label: string): Promise<NewsItem[]> {
+async function fetchRss(url: string, label: string, sectorHint?: string): Promise<NewsItem[]> {
   try {
     const feed = await parser.parseURL(url)
     return (feed.items || []).slice(0, 15).map(item => ({
@@ -325,25 +359,34 @@ async function fetchRss(url: string, label: string): Promise<NewsItem[]> {
       url: item.link || '',
       pubDate: item.pubDate || item.isoDate || '',
       source: label,
-      sectors: matchSectors(`${item.title} ${item.contentSnippet}`),
+      sectors: buildSectors(item.title || '', item.contentSnippet || '', sectorHint),
       lang: 'en' as const,
     })).filter(i => i.title && i.url)
   } catch { return [] }
 }
 
 export async function translateTitles(items: NewsItem[]): Promise<NewsItem[]> {
-  const key = process.env.GEMINI_API_KEY
-  if (!key || key.startsWith('你的')) return items
+  const key = process.env.DEEPSEEK_API_KEY
+  if (!key) return items
   const enItems = items.filter(i => i.lang === 'en' && !i.translatedTitle)
   if (!enItems.length) return items
   try {
     const titles = enItems.map((i, idx) => `${idx + 1}. ${i.title}`).join('\n')
     const res = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
-      { contents: [{ parts: [{ text: `翻译为中文财经标题，只返回JSON数组["译文1","译文2"]：\n${titles}` }] }] },
-      { timeout: 20000 }
+      'https://api.deepseek.com/chat/completions',
+      {
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: `翻译为中文财经标题，只返回JSON数组["译文1","译文2"]：\n${titles}` }],
+        temperature: 0.3,
+        max_tokens: 1024,
+        stream: false,
+      },
+      {
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        timeout: 20000,
+      }
     )
-    const text: string = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
+    const text: string = res.data?.choices?.[0]?.message?.content || '[]'
     const match = text.match(/\[[\s\S]*?\]/)
     if (match) {
       const translated: string[] = JSON.parse(match[0])
@@ -368,11 +411,11 @@ export async function searchNews(query: string, translate = false): Promise<News
   // 合并并标注语言/板块/sourceCount
   const localMatched: NewsItem[] = (localPool as CNewsItem[])
     .filter(c => (c.title + ' ' + c.content).toLowerCase().includes(qLower))
-    .map(c => ({ ...c, sectors: matchSectors(c.title + ' ' + c.content), lang: 'zh' as const }))
+    .map(c => ({ ...c, sectors: buildSectors(c.title, c.content), lang: 'zh' as const }))
 
   const freshItems: NewsItem[] = freshFromWeb.map(c => ({
     ...c,
-    sectors: matchSectors(c.title + ' ' + c.content),
+    sectors: buildSectors(c.title, c.content),
     lang: 'zh' as const,
   }))
 
@@ -393,19 +436,22 @@ export async function searchNews(query: string, translate = false): Promise<News
 }
 
 export async function fetchNews(sectorFilter?: string, translate = false): Promise<NewsItem[]> {
-  const enFeeds = [...EN_GENERAL_FEEDS]
-  if (sectorFilter && sectorFilter !== 'all' && EN_SECTOR_FEEDS[sectorFilter]) {
-    enFeeds.push(...EN_SECTOR_FEEDS[sectorFilter])
-  }
+  // 板块专属英文 feed 传入 sectorHint，避免标题不含关键词时被归到错误板块
+  const generalFeedPromises = EN_GENERAL_FEEDS.map(f => fetchRss(f.url, f.label))
+  const sectorFeedPromises = (sectorFilter && sectorFilter !== 'all' && EN_SECTOR_FEEDS[sectorFilter])
+    ? EN_SECTOR_FEEDS[sectorFilter].map(f => fetchRss(f.url, f.label, sectorFilter))
+    : []
 
   const [cnRaw, ...enResults] = await Promise.all([
     fetchChineseNews(),
-    ...enFeeds.map(f => fetchRss(f.url, f.label)),
+    ...generalFeedPromises,
+    ...sectorFeedPromises,
   ])
 
   const cnItems: NewsItem[] = (cnRaw as CNewsItem[]).map(c => ({
     ...c,
-    sectors: matchSectors(c.title + ' ' + c.content),
+    // buildSectors：标题优先 → sourceSector 提示 → 内容兜底
+    sectors: buildSectors(c.title, c.content, (c as CNewsItem & { sourceSector?: string }).sourceSector),
     lang: 'zh' as const,
   }))
 
@@ -434,6 +480,29 @@ export async function fetchNews(sectorFilter?: string, translate = false): Promi
   }
 
   all = all.slice(0, 300)  // 提高上限，配合时间过滤后仍保留充足信息
+
+  // ── 合并进进程级 article store（URL 级去重 + 为情绪分析提供指纹） ────────────
+  mergeArticles(all)
+
   if (translate) all = await translateTitles(all)
   return all
+}
+
+/**
+ * 从 article store 中读取某板块的文章。
+ * - 如果 store 为空（冷启动）则自动触发一次完整 fetch 来预热。
+ * - maxAgeHours：只返回这么多小时内的文章（情绪分析传 24 节约 token）
+ */
+export async function getArticlesForSector(
+  sectorId?: string,
+  maxAgeHours?: number,
+): Promise<NewsItem[]> {
+  if (storeSize() === 0) {
+    await fetchNews(undefined, false)  // 预热 store
+  }
+  const stored = getArticles(
+    sectorId === 'all' ? undefined : sectorId,
+    maxAgeHours,
+  )
+  return stored.slice(0, 300) as NewsItem[]
 }

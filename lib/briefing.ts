@@ -1,33 +1,45 @@
-import axios from 'axios'
+import { chat } from './deepseek'
 import { fetchNews, type NewsItem } from './news'
+import { buildUnsubscribeUrl } from './subscribers'
 
-// ─── 生成盘前简报（遵循 premarketibriefing 格式） ─────────────────────────────
+// ─── 进程级日期缓存：同一天只生成一次简报，节约 token ────────────────────────
+let _briefingDate = ''
+let _briefingText = ''
+
+// ─── 生成盘前简报（遵循 premarketbriefing 格式） ─────────────────────────────
 export async function generatePremarketBriefing(): Promise<{ text: string; articles: NewsItem[] }> {
+  // 当天已生成过 → 直接复用
+  const today = new Date().toLocaleDateString('zh-CN')
+  if (_briefingDate === today && _briefingText) {
+    console.log('[briefing] using daily cache')
+    return { text: _briefingText, articles: [] }
+  }
+
   const news = await fetchNews(undefined, false)
-  // 取最新 40 条，作为简报素材
-  const top = news.slice(0, 40)
+  // 取最新 30 条作为简报素材（40→30，节约 25% token）
+  const top = news.slice(0, 30)
 
   const text = await buildBriefingText(top)
+
+  // 缓存当天结果
+  _briefingDate = today
+  _briefingText = text
+
   return { text, articles: top }
 }
 
 async function buildBriefingText(articles: NewsItem[]): Promise<string> {
-  const key = process.env.GEMINI_API_KEY
   const today = new Date().toLocaleDateString('zh-CN', {
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
   })
 
-  if (!key || key.startsWith('你的')) {
-    return fallbackBriefing(today, articles)
-  }
-
   const newsText = articles
-    .map((n, i) => `${i + 1}. [${n.source}] ${n.title}${n.content ? ' — ' + n.content.slice(0, 120) : ''}\n   链接：${n.url}`)
+    .map((n, i) => `${i + 1}. [${n.source}] ${n.title}${n.content ? ' — ' + n.content.slice(0, 80) : ''}\n   链接：${n.url}`)
     .join('\n\n')
 
   const prompt = `你是一位资深A股卖方研究员，每天开盘前为机构客户撰写简报。今天是${today}。
 
-以下是今日最新财经资讯（按时间排序，共${articles.length}条）：
+以下是今日最新财经资讯（按时间排序，共${articles.length}条，摘要已精简）：
 ${newsText}
 
 请严格按照以下格式生成盘前简报，所有内容必须来自上述资讯，不得编造：
@@ -58,12 +70,12 @@ ${newsText}
 注意：语言简洁专业，面向机构投资者，AI内容仅供参考，不构成投资建议。`
 
   try {
-    const res = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
-      { contents: [{ parts: [{ text: prompt }] }] },
-      { timeout: 45000 },
-    )
-    const text: string = res.data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    const text = await chat(prompt, {
+      model: 'deepseek-chat',
+      temperature: 0.4,
+      maxTokens: 3000,
+      retries: 2,
+    })
     return text.trim() || fallbackBriefing(today, articles)
   } catch {
     return fallbackBriefing(today, articles)
@@ -76,7 +88,7 @@ function fallbackBriefing(today: string, articles: NewsItem[]): string {
 }
 
 // ─── 将简报文本渲染为 HTML 邮件 ────────────────────────────────────────────
-export function buildBriefingEmailHtml(briefingText: string): string {
+export function buildBriefingEmailHtml(briefingText: string, recipientEmail?: string): string {
   const dateStr = new Date().toLocaleDateString('zh-CN', {
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
   })
@@ -113,7 +125,9 @@ export function buildBriefingEmailHtml(briefingText: string): string {
   <div class="footer">
     由市场仪表盘自动生成<br>
     AI 内容仅供参考，不构成投资建议<br>
-    如需退订请回复此邮件
+    ${recipientEmail
+      ? `<a href="${buildUnsubscribeUrl(recipientEmail)}" style="color:#4b5563;text-decoration:underline">退订</a>`
+      : '如需退订请回复此邮件'}
   </div>
 </div>
 </body>

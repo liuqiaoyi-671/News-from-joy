@@ -30,7 +30,6 @@ export async function GET(
 
   try {
     const { text } = await generatePremarketBriefing()
-    const html = buildBriefingEmailHtml(text)
     const subject = `🌅 盘前简报 ${new Date().toLocaleDateString('zh-CN')}${isTest ? '（测试）' : ''}`
 
     const sent: string[] = []
@@ -40,18 +39,14 @@ export async function GET(
       // 仅发给默认测试邮箱
       const to = process.env.DEFAULT_TO_EMAIL
       if (!to) return NextResponse.json({ error: 'DEFAULT_TO_EMAIL not set' }, { status: 500 })
-      try { await sendEmail({ to, subject, html }); sent.push(to) }
+      try { await sendEmail({ to, subject, html: buildBriefingEmailHtml(text, to) }); sent.push(to) }
       catch (e) { errors.push({ email: to, error: String(e) }) }
     } else {
-      // 真实 cron：发给该时间段所有订阅者
+      // 真实 cron：仅发给该时间段显式订阅者
       const subscribers = await getSubscribersByTime(time).catch(() => [])
-      // 同时把 DEFAULT_TO_EMAIL 也加进去，确保至少有一封
-      const defaultTo = process.env.DEFAULT_TO_EMAIL
-      const all = new Set(subscribers)
-      if (defaultTo && time === '800') all.add(defaultTo)  // 默认 8:00 收
 
-      for (const email of all) {
-        try { await sendEmail({ to: email, subject, html }); sent.push(email) }
+      for (const email of subscribers) {
+        try { await sendEmail({ to: email, subject, html: buildBriefingEmailHtml(text, email) }); sent.push(email) }
         catch (e) { errors.push({ email, error: String(e) }) }
       }
     }

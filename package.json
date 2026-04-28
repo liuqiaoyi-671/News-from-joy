@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "snapshot": "node scripts/snapshot.mjs",
+    "export": "node scripts/build-static.mjs"
   },
   "dependencies": {
     "next": "14.2.5",

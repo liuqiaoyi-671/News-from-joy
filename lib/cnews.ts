@@ -1,5 +1,6 @@
 import axios from 'axios'
 import Parser from 'rss-parser'
+import { cached } from './cache'
 
 const parser = new Parser({ timeout: 6000 })
 
@@ -10,7 +11,8 @@ export interface CNewsItem {
   pubDate: string
   source: string
   lang: 'zh'
-  sourceCount?: number  // 同一事件在多少个来源被报道（用于判断重大新闻）
+  sourceCount?: number    // 同一事件在多少个来源被报道（用于判断重大新闻）
+  sourceSector?: string   // 通过关键词搜索获得的文章，直接对应的板块 ID
 }
 
 // ─── 新浪财经 JSON API ─────────────────────────────────────────────────────────
@@ -169,31 +171,23 @@ export async function searchByKeyword(keyword: string): Promise<CNewsItem[]> {
   })
 }
 
+// 搜索关键词 → 板块 ID 映射（用于给搜索结果打 sourceSector 标签）
+const KEYWORD_SECTOR_MAP: Record<string, string> = {
+  '央行': 'macro',    '美联储': 'macro',    '降准降息': 'macro',   '银行股': 'finance',
+  '房地产': 'realestate', '楼市': 'realestate', '地产政策': 'realestate', '物业管理': 'realestate',
+  '原油': 'energy',   '煤炭': 'energy',     '天然气': 'energy',
+  '光伏': 'newenergy','锂电池': 'newenergy','储能': 'newenergy',
+  '生猪': 'agriculture', '大豆': 'agriculture',
+  '白酒': 'food',     '食品饮料': 'food',
+  '化工行业': 'chemicals', '钢铁': 'metals', '有色金属': 'metals',
+  '创新药': 'pharma', '医疗器械': 'pharma',
+  '人工智能': 'ai',   '大模型': 'ai',       '半导体': 'semiconductor', '芯片': 'semiconductor', '信创': 'semiconductor',
+  '新能源车': 'auto', '智能驾驶': 'auto',
+  '消费电子': 'consumer', '军工': 'defense', '5G': 'telecom', '工程机械': 'machinery', '环保': 'environment', '航运': 'transport',
+}
+
 // 每个行业 1-2 个高区分度关键词 — 确保跨行业均衡覆盖
-const EASTMONEY_SEARCH_KEYWORDS = [
-  // 宏观/金融
-  '央行', '美联储', '降准降息', '银行股',
-  // 地产/建筑（重点加强）
-  '房地产', '楼市', '地产政策', '物业管理',
-  // 能源
-  '原油', '煤炭', '天然气',
-  // 新能源
-  '光伏', '锂电池', '储能',
-  // 农业
-  '生猪', '大豆',
-  // 食品
-  '白酒', '食品饮料',
-  // 化工/金属
-  '化工行业', '钢铁', '有色金属',
-  // 医药
-  '创新药', '医疗器械',
-  // 科技
-  '人工智能', '大模型', '半导体', '芯片', '信创',
-  // 汽车
-  '新能源车', '智能驾驶',
-  // 消费/军工/通信/机械/环保/交通
-  '消费电子', '军工', '5G', '工程机械', '环保', '航运',
-]
+const EASTMONEY_SEARCH_KEYWORDS = Object.keys(KEYWORD_SECTOR_MAP)
 
 // ─── RSS 源解析 ────────────────────────────────────────────────────────────────
 async function fetchRssZH(url: string, label: string, limit = 20): Promise<CNewsItem[]> {
@@ -222,7 +216,12 @@ const ZH_RSS_SOURCES = [
 ]
 
 // ─── 主入口 ───────────────────────────────────────────────────────────────────
-export async function fetchChineseNews(): Promise<CNewsItem[]> {
+// 5 min 内部缓存：防止多路调用（sentiment 预热 + news API 正常刷新）同时触发几十个 HTTP 请求
+export function fetchChineseNews(): Promise<CNewsItem[]> {
+  return cached('cnews:raw', _fetchChineseNewsRaw, { ttl: 5 * 60_000 })
+}
+
+async function _fetchChineseNewsRaw(): Promise<CNewsItem[]> {
   const tasks: Promise<CNewsItem[]>[] = [
     // 新浪财经主分类 — 多页拉取以保证行业覆盖
     ...SINA_CATEGORIES.flatMap(c =>
@@ -232,8 +231,12 @@ export async function fetchChineseNews(): Promise<CNewsItem[]> {
     ...EASTMONEY_CATEGORIES.map(c => fetchEastmoneyCategory(c.source, c.label)),
     // 财联社电报
     fetchCLS(),
-    // 东财关键词搜索（按行业关键词并发拉取，保障稀缺行业覆盖）
-    ...EASTMONEY_SEARCH_KEYWORDS.map(kw => fetchEastmoneySearch(kw)),
+    // 东财关键词搜索 — 结果直接打上对应板块 sourceSector，避免全文关键词误归板块
+    ...EASTMONEY_SEARCH_KEYWORDS.map(kw =>
+      fetchEastmoneySearch(kw).then(items =>
+        items.map(i => ({ ...i, sourceSector: KEYWORD_SECTOR_MAP[kw] }))
+      )
+    ),
     // RSS 来源
     ...ZH_RSS_SOURCES.map(s => fetchRssZH(s.url, s.label)),
   ]
