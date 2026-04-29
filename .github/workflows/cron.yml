@@ -1,0 +1,42 @@
+name: 定时邮件推送
+
+on:
+  schedule:
+    # 所有时间为 UTC，北京时间 = UTC+8
+    - cron: '30 23 * * 0-4'   # 北京时间 07:30（周一至周五）
+    - cron: '0 0 * * 1-5'     # 北京时间 08:00（周一至周五）
+    - cron: '30 0 * * 1-5'    # 北京时间 08:30（周一至周五）
+    - cron: '10 8 * * 1-5'    # 北京时间 16:10（周一至周五）
+  workflow_dispatch:           # 允许手动触发（测试用）
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 盘前简报 07:30
+        if: github.event.schedule == '30 23 * * 0-4'
+        run: |
+          curl -sf -X GET "${{ secrets.SITE_URL }}/api/cron/premarket/730" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            || echo "::warning::盘前730触发失败"
+
+      - name: 盘前简报 08:00
+        if: github.event.schedule == '0 0 * * 1-5'
+        run: |
+          curl -sf -X GET "${{ secrets.SITE_URL }}/api/cron/premarket/800" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            || echo "::warning::盘前800触发失败"
+
+      - name: 盘前简报 08:30
+        if: github.event.schedule == '30 0 * * 1-5'
+        run: |
+          curl -sf -X GET "${{ secrets.SITE_URL }}/api/cron/premarket/830" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            || echo "::warning::盘前830触发失败"
+
+      - name: 盘后日报 16:10
+        if: github.event.schedule == '10 8 * * 1-5'
+        run: |
+          curl -sf -X GET "${{ secrets.SITE_URL }}/api/cron/postmarket" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            || echo "::warning::盘后触发失败"
