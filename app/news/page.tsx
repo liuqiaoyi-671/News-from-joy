@@ -63,6 +63,7 @@ export default function NewsPage() {
   const [refreshing, setRefreshing] = useState(false) // 有本地缓存时的后台刷新状态
   const [translateLoading, setTranslateLoading] = useState(false)
   const [updatedAt, setUpdatedAt] = useState('')
+  const [resolvedStock, setResolvedStock] = useState<{ code: string; name: string; exchange: string } | null>(null)
   const fetchId = useRef(0)  // 防止旧请求结果覆盖新请求
 
   const load = useCallback(async (s: string, q: string, withTranslate = false, forceRefresh = false) => {
@@ -101,6 +102,7 @@ export default function NewsPage() {
       const fresh = (res.articles as NewsItem[]) || []
       setArticles(fresh)
       setUpdatedAt(res.updatedAt || '')
+      setResolvedStock((res as { resolvedStock?: { code: string; name: string; exchange: string } }).resolvedStock || null)
       if (!withTranslate) writeCache(s, q, fresh)
     } finally {
       if (fetchId.current === id) { setLoading(false); setRefreshing(false) }
@@ -149,6 +151,13 @@ export default function NewsPage() {
         {query && (
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <span>搜索 <span className="text-accent font-medium">"{query}"</span></span>
+            {resolvedStock && (
+              <>
+                <span className="text-gray-700">→</span>
+                <span className="text-accent font-medium">{resolvedStock.name}</span>
+                <span className="text-gray-700 text-[10px]">{resolvedStock.exchange}</span>
+              </>
+            )}
             <span className="text-gray-700">·</span>
             <span>{articles.length} 条结果</span>
           </div>

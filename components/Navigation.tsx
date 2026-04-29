@@ -35,6 +35,16 @@ export default function Navigation() {
             >
               📊 情绪雷达
             </Link>
+            <Link
+              href="/subscribe"
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                path === '/subscribe'
+                  ? 'bg-accent text-white'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-bg-card'
+              }`}
+            >
+              📧 订阅
+            </Link>
           </nav>
         </div>
         <EmailSubscribe />

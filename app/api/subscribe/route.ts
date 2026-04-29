@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email'
-import { addSubscriber, buildUnsubscribeUrl } from '@/lib/subscribers'
+import { addSubscriber, buildUnsubscribeUrl, getSubscriberByEmail, unsubscribeContact } from '@/lib/subscribers'
 
 const TIME_LABELS: Record<string, string> = {
   '730': '07:30',
@@ -70,6 +70,35 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json({ ok: true, saved, wantsPremarket, wantsPostmarket })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
+// ── 查询订阅状态 ──────────────────────────────────────────────────────────────
+export async function GET(req: NextRequest) {
+  const email = (req.nextUrl.searchParams.get('email') || '').trim().toLowerCase()
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ error: 'invalid email' }, { status: 400 })
+  }
+  try {
+    const sub = await getSubscriberByEmail(email)
+    if (!sub) return NextResponse.json({ found: false })
+    return NextResponse.json({ found: true, subscriber: sub })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+
+// ── 退订 ──────────────────────────────────────────────────────────────────────
+export async function DELETE(req: NextRequest) {
+  const email = (req.nextUrl.searchParams.get('email') || '').trim()
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ error: 'invalid email' }, { status: 400 })
+  }
+  try {
+    await unsubscribeContact(email)
+    return NextResponse.json({ ok: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }

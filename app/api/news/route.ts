@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchNews, searchNews } from '@/lib/news'
 import { cached } from '@/lib/cache'
+import { isStockCode, resolveStockCode, StockInfo } from '@/lib/stock-lookup'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,21 +18,29 @@ export async function GET(req: NextRequest) {
   const fresh = req.nextUrl.searchParams.get('fresh') === '1'
 
   try {
-    const cacheKey = `news:q=${q}:sector=${sector}:t=${translate}`
+    // 股票代码解析：6 位数字 → 公司名称（纯 HTTP，不调 AI）
+    let searchQ = q
+    let resolvedStock: StockInfo | undefined
+    if (q && isStockCode(q)) {
+      const info = await resolveStockCode(q)
+      if (info) { searchQ = info.name; resolvedStock = info }
+    }
+
+    const cacheKey = `news:q=${searchQ}:sector=${sector}:t=${translate}`
     let articles = await cached(
       cacheKey,
-      () => q
-        ? searchNews(q, translate)
+      () => searchQ
+        ? searchNews(searchQ, translate)
         : fetchNews(sector === 'all' ? undefined : sector, translate),
       { ttl: 5 * 60_000, fresh }
     )
 
     // 关键词搜索 + 板块筛选叠加（AND）
-    if (q && sector && sector !== 'all') {
+    if (searchQ && sector && sector !== 'all') {
       articles = articles.filter(a => a.sectors.includes(sector))
     }
 
-    return NextResponse.json({ articles, updatedAt: new Date().toISOString() })
+    return NextResponse.json({ articles, updatedAt: new Date().toISOString(), resolvedStock })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }

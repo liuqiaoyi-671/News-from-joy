@@ -110,12 +110,29 @@ type ContactRow = {
   unsubscribed?: boolean
 }
 
-async function listAllContacts(): Promise<ContactRow[]> {
+async function listAllContactsRaw(): Promise<ContactRow[]> {
   const audienceId = await ensureAudienceId()
   if (!audienceId) return []
   const resend = getResend()
   const { data } = await resend.contacts.list({ audienceId })
-  return ((data as { data?: ContactRow[] })?.data || []).filter(r => !r.unsubscribed)
+  return (data as { data?: ContactRow[] })?.data || []
+}
+
+async function listAllContacts(): Promise<ContactRow[]> {
+  return (await listAllContactsRaw()).filter(r => !r.unsubscribed)
+}
+
+/** 按邮箱查找订阅者（含已退订记录） */
+export async function getSubscriberByEmail(email: string): Promise<Subscriber | null> {
+  const rows = await listAllContactsRaw()
+  const found = rows.find(r => r.email.toLowerCase() === email.toLowerCase())
+  if (!found) return null
+  return {
+    email: found.email,
+    deliveryTime: found.first_name || 'none',
+    wantsPostmarket: found.last_name === 'post',
+    unsubscribed: found.unsubscribed || false,
+  }
 }
 
 /** 列出此时间段（"730"/"800"/"830"）订阅了【盘前】简报的邮箱 */

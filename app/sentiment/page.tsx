@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { Loader2, RefreshCw, TrendingUp, TrendingDown, Minus, ExternalLink } from 'lucide-react'
+import SentimentHistoryChart, { type SentimentSnapshot } from '@/components/SentimentHistoryChart'
 
 interface SectorSentiment {
   id: string
@@ -32,6 +33,33 @@ function writeCache(data: SectorSentiment[], generatedAt: string) {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify({ data, generatedAt, ts: Date.now() }))
   } catch { /* storage full */ }
+}
+
+// ── 历史快照（每天一条，最多 14 天）─────────────────────────────────────────────
+const HISTORY_KEY = 'sentiment-history-v1'
+const MAX_HISTORY_DAYS = 14
+
+function saveSnapshot(data: SectorSentiment[]) {
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const raw = localStorage.getItem(HISTORY_KEY)
+    const history: SentimentSnapshot[] = raw ? JSON.parse(raw) : []
+    const filtered = history.filter(h => h.date !== today)
+    filtered.push({
+      date: today,
+      ts: Date.now(),
+      sectors: data.map(s => ({ id: s.id, name: s.name, score: s.score })),
+    })
+    filtered.sort((a, b) => a.date.localeCompare(b.date))
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(filtered.slice(-MAX_HISTORY_DAYS)))
+  } catch { /* storage full */ }
+}
+
+function loadHistory(): SentimentSnapshot[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
 }
 
 // ── 颜色（A股：红=看多，绿=看空） ─────────────────────────────────────────────
@@ -70,6 +98,8 @@ export default function SentimentPage() {
   const [refreshing, setRefreshing] = useState(false)    // 有缓存时后台刷新指示
   const [error, setError]           = useState<string | null>(null)
   const [expanded, setExpanded]     = useState<string | null>(null)
+  const [tab, setTab]               = useState<'current' | 'history'>('current')
+  const [history, setHistory]       = useState<SentimentSnapshot[]>([])
   const fetchId = useRef(0)
 
   async function load(forceRefresh = false) {
@@ -108,6 +138,8 @@ export default function SentimentPage() {
         setGeneratedAt(freshAt)
         setError(null)
         writeCache(freshData, freshAt)
+        saveSnapshot(freshData)
+        setHistory(loadHistory())
         setLoading(false); setRefreshing(false)
         return
       } catch (e) { lastErr = e }
@@ -143,7 +175,7 @@ export default function SentimentPage() {
     }
   }
 
-  useEffect(() => { load() }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setHistory(loadHistory()); load() }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = data.length ? {
     avgScore: Math.round(data.reduce((s, d) => s + d.score, 0) / data.length),
@@ -198,13 +230,34 @@ export default function SentimentPage() {
 
         {/* 全局统计 */}
         {stats && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
             <StatCard label="市场整体均值" value={`${stats.avgScore > 0 ? '+' : ''}${stats.avgScore}`} color={scoreColor(stats.avgScore).text} />
             <StatCard label="看多板块" value={String(stats.bullish)} color="#fca5a5" suffix="个" />
             <StatCard label="看空板块" value={String(stats.bearish)} color="#86efac" suffix="个" />
             <StatCard label="中性板块" value={String(stats.neutral)} color="#9ca3af" suffix="个" />
           </div>
         )}
+
+        {/* 视图切换 */}
+        <div style={{ display: 'flex', gap: 4, background: '#111', borderRadius: 8, padding: 4, marginBottom: 16, width: 'fit-content' }}>
+          {(['current', 'history'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                padding: '6px 16px', borderRadius: 6, fontSize: 13, cursor: 'pointer', border: 'none',
+                background: tab === t ? '#3b82f6' : 'transparent',
+                color: tab === t ? 'white' : '#6b7280',
+                display: 'flex', alignItems: 'center', gap: 6,
+                transition: 'all 0.15s',
+              }}
+            >
+              {t === 'current' ? '当前快照' : (
+                <>历史趋势{history.length > 0 && <span style={{ fontSize: 10, background: '#1f2937', padding: '1px 5px', borderRadius: 3, color: '#9ca3af' }}>{history.length}天</span>}</>
+              )}
+            </button>
+          ))}
+        </div>
 
         {/* 首次加载 spinner */}
         {loading && data.length === 0 && (
@@ -220,8 +273,15 @@ export default function SentimentPage() {
           </div>
         )}
 
+        {/* 历史趋势图 */}
+        {tab === 'history' && (
+          <div style={{ background: '#111', border: '1px solid #1f1f1f', borderRadius: 10, padding: 20 }}>
+            <SentimentHistoryChart snapshots={history} />
+          </div>
+        )}
+
         {/* 板块卡片网格 */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+        {tab === 'current' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
           {data.map(s => {
             const c = scoreColor(s.score)
             const isOpen = expanded === s.id
@@ -305,10 +365,10 @@ export default function SentimentPage() {
               </div>
             )
           })}
-        </div>
+        </div>}
 
         <p style={{ textAlign: 'center', color: '#4b5563', fontSize: 11, marginTop: 32 }}>
-          点击卡片展开核心资讯 · AI 内容仅供参考，不构成投资建议
+          {tab === 'current' ? '点击卡片展开核心资讯 · ' : ''}AI 内容仅供参考，不构成投资建议
         </p>
       </div>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
