@@ -173,17 +173,65 @@ export async function searchByKeyword(keyword: string): Promise<CNewsItem[]> {
 
 // 搜索关键词 → 板块 ID 映射（用于给搜索结果打 sourceSector 标签）
 const KEYWORD_SECTOR_MAP: Record<string, string> = {
-  '央行': 'macro',    '美联储': 'macro',    '降准降息': 'macro',   '银行股': 'finance',
-  '房地产': 'realestate', '楼市': 'realestate', '地产政策': 'realestate', '物业管理': 'realestate',
-  '原油': 'energy',   '煤炭': 'energy',     '天然气': 'energy',
-  '光伏': 'newenergy','锂电池': 'newenergy','储能': 'newenergy',
-  '生猪': 'agriculture', '大豆': 'agriculture',
-  '白酒': 'food',     '食品饮料': 'food',
-  '化工行业': 'chemicals', '钢铁': 'metals', '有色金属': 'metals',
-  '创新药': 'pharma', '医疗器械': 'pharma',
-  '人工智能': 'ai',   '大模型': 'ai',       '半导体': 'semiconductor', '芯片': 'semiconductor', '信创': 'semiconductor',
-  '新能源车': 'auto', '智能驾驶': 'auto',
-  '消费电子': 'consumer', '军工': 'defense', '5G': 'telecom', '工程机械': 'machinery', '环保': 'environment', '航运': 'transport',
+  // 宏观/政策
+  '央行': 'macro',        '美联储': 'macro',      '降准降息': 'macro',
+  '财政政策': 'macro',    '货币政策': 'macro',    '经济数据': 'macro',
+  'PMI': 'macro',         'CPI': 'macro',          'GDP': 'macro',
+  // 金融
+  '银行股': 'finance',    '券商': 'finance',       '保险': 'finance',
+  '基金': 'finance',      '债券': 'finance',       '信托': 'finance',
+  // 房地产
+  '房地产': 'realestate', '楼市': 'realestate',   '地产政策': 'realestate',
+  '物业管理': 'realestate','新房销售': 'realestate','房企': 'realestate',
+  // 能源
+  '原油': 'energy',       '煤炭': 'energy',        '天然气': 'energy',
+  '石油化工': 'energy',   '成品油': 'energy',      '液化天然气': 'energy',
+  // 新能源
+  '光伏': 'newenergy',    '锂电池': 'newenergy',   '储能': 'newenergy',
+  '风电': 'newenergy',    '碳酸锂': 'newenergy',   '充电桩': 'newenergy',
+  // 农业
+  '生猪': 'agriculture',  '大豆': 'agriculture',   '玉米': 'agriculture',
+  '小麦': 'agriculture',  '猪价': 'agriculture',   '农产品': 'agriculture',
+  '豆粕': 'agriculture',  '养殖': 'agriculture',
+  // 食品饮料
+  '白酒': 'food',         '食品饮料': 'food',      '啤酒': 'food',
+  '乳制品': 'food',       '茅台': 'food',          '调味品': 'food',
+  // 化工
+  '化工行业': 'chemicals', '纯碱': 'chemicals',    'PTA': 'chemicals',
+  '聚酯': 'chemicals',    '农药': 'chemicals',      '化肥': 'chemicals',
+  // 钢铁/有色
+  '钢铁': 'metals',       '有色金属': 'metals',    '铜价': 'metals',
+  '铝': 'metals',         '螺纹钢': 'metals',       '铁矿石': 'metals',
+  // 医药
+  '创新药': 'pharma',     '医疗器械': 'pharma',    '集采': 'pharma',
+  'CXO': 'pharma',        '医保': 'pharma',         '生物制药': 'pharma',
+  // AI/科技
+  '人工智能': 'ai',       '大模型': 'ai',           '算力': 'ai',
+  '数据中心': 'ai',       '云计算': 'ai',           'DeepSeek': 'ai',
+  // 半导体
+  '半导体': 'semiconductor', '芯片': 'semiconductor', '信创': 'semiconductor',
+  '集成电路': 'semiconductor', '晶圆': 'semiconductor', '光刻机': 'semiconductor',
+  // 汽车
+  '新能源车': 'auto',     '智能驾驶': 'auto',      '比亚迪': 'auto',
+  '汽车销量': 'auto',     '车企': 'auto',           '电动车': 'auto',
+  // 消费/零售
+  '消费电子': 'consumer', '家电': 'consumer',       '零售': 'consumer',
+  '旅游': 'consumer',     '免税': 'consumer',       '直播电商': 'consumer',
+  // 军工
+  '军工': 'defense',      '航天': 'defense',        '国防': 'defense',
+  '商业航天': 'defense',  '军费': 'defense',
+  // 通信
+  '5G': 'telecom',        '6G': 'telecom',          '卫星通信': 'telecom',
+  '运营商': 'telecom',    '物联网': 'telecom',
+  // 机械
+  '工程机械': 'machinery', '机器人': 'machinery',   '工业自动化': 'machinery',
+  '数控机床': 'machinery', '挖掘机': 'machinery',
+  // 环保/公用
+  '环保': 'environment',  '碳交易': 'environment', '电力': 'environment',
+  '核电': 'environment',  '水务': 'environment',
+  // 交通运输
+  '航运': 'transport',    '物流': 'transport',      '快递': 'transport',
+  '集运': 'transport',    '民航': 'transport',      '港口': 'transport',
 }
 
 // 每个行业 1-2 个高区分度关键词 — 确保跨行业均衡覆盖

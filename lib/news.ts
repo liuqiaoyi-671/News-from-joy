@@ -267,6 +267,12 @@ const EN_GENERAL_FEEDS = [
   { url: 'https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines',         label: 'MarketWatch' },
   { url: 'https://finance.yahoo.com/news/rssindex',                                   label: 'Yahoo Finance' },
   { url: 'https://feeds.bloomberg.com/markets/news.rss',                              label: 'Bloomberg Markets' },
+  { url: 'https://feeds.a.dj.com/rss/RSSMarketsMain.xml',                             label: 'WSJ Markets' },
+  { url: 'https://www.ft.com/rss/home/uk',                                            label: 'FT Markets' },
+  { url: 'https://seekingalpha.com/market_currents.xml',                              label: 'Seeking Alpha' },
+  { url: 'https://www.investors.com/feed/',                                            label: 'Investor Business Daily' },
+  { url: 'https://www.scmp.com/rss/91/feed',                                          label: 'SCMP Business' },
+  { url: 'https://asia.nikkei.com/rss/feed/nar',                                      label: 'Nikkei Asia' },
 ]
 
 // ─── 英文 RSS：申万行业对应板块 ──────────────────────────────────────────────
@@ -274,13 +280,18 @@ const EN_SECTOR_FEEDS: Record<string, { url: string; label: string }[]> = {
   macro: [
     { url: 'https://feeds.reuters.com/Reuters/worldNews',                              label: 'Reuters World' },
     { url: 'https://feeds.reuters.com/reuters/politicsNews',                           label: 'Reuters Politics' },
+    { url: 'https://www.ft.com/rss/home/uk',                                           label: 'FT Markets' },
+    { url: 'https://asia.nikkei.com/rss/feed/nar',                                     label: 'Nikkei Asia' },
   ],
   finance: [
     { url: 'https://feeds.reuters.com/reuters/financialsNews',                         label: 'Reuters Finance' },
     { url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147', label: 'CNBC Finance' },
+    { url: 'https://seekingalpha.com/market_currents.xml',                             label: 'Seeking Alpha' },
+    { url: 'https://feeds.a.dj.com/rss/RSSMarketsMain.xml',                           label: 'WSJ Markets' },
   ],
   realestate: [
     { url: 'https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines',       label: 'MarketWatch' },
+    { url: 'https://www.scmp.com/rss/91/feed',                                         label: 'SCMP Business' },
   ],
   energy: [
     { url: 'https://oilprice.com/rss/main',                                            label: 'OilPrice.com' },
@@ -302,6 +313,7 @@ const EN_SECTOR_FEEDS: Record<string, { url: string; label: string }[]> = {
   chemicals: [
     { url: 'https://www.chemweek.com/rss',                                              label: 'ChemWeek' },
     { url: 'https://feeds.reuters.com/reuters/energy',                                  label: 'Reuters Energy' },
+    { url: 'https://www.chemengonline.com/feed/',                                        label: 'Chemical Engineering' },
   ],
   metals: [
     { url: 'https://www.mining.com/rss/',                                               label: 'Mining.com' },
@@ -311,23 +323,28 @@ const EN_SECTOR_FEEDS: Record<string, { url: string; label: string }[]> = {
     { url: 'https://www.biopharmadive.com/feeds/news/',                                  label: 'BioPharma Dive' },
     { url: 'https://www.fiercepharma.com/rss/xml',                                       label: 'Fierce Pharma' },
     { url: 'https://www.medscape.com/rss/allnews.xml',                                   label: 'Medscape' },
+    { url: 'https://www.fiercebiotech.com/rss/xml',                                       label: 'Fierce Biotech' },
   ],
   ai: [
     { url: 'https://venturebeat.com/category/ai/feed/',                                  label: 'VentureBeat AI' },
     { url: 'https://techcrunch.com/tag/artificial-intelligence/feed/',                   label: 'TechCrunch AI' },
     { url: 'https://www.theverge.com/rss/ai-artificial-intelligence/index.xml',          label: 'The Verge AI' },
+    { url: 'https://www.investors.com/feed/',                                             label: 'IBD Tech' },
   ],
   semiconductor: [
     { url: 'https://feeds.feedburner.com/AnandTech',                                     label: 'AnandTech' },
     { url: 'https://semianalysis.com/feed/',                                              label: 'SemiAnalysis' },
     { url: 'https://www.eetimes.com/feed/',                                               label: 'EE Times' },
+    { url: 'https://semiengineering.com/feed/',                                           label: 'Semiconductor Engineering' },
   ],
   auto: [
     { url: 'https://feeds.feedburner.com/autonews/AllContent',                            label: 'Automotive News' },
     { url: 'https://electrek.co/tag/tesla/feed/',                                         label: 'Electrek Tesla' },
+    { url: 'https://electrek.co/feed/',                                                    label: 'Electrek EV' },
   ],
   consumer: [
     { url: 'https://feeds.reuters.com/reuters/consumergoodsNews',                         label: 'Reuters Consumer' },
+    { url: 'https://www.investors.com/feed/',                                              label: 'IBD Consumer' },
   ],
   defense: [
     { url: 'https://www.defensenews.com/rss/all.rss/',                                    label: 'Defense News' },
@@ -339,6 +356,7 @@ const EN_SECTOR_FEEDS: Record<string, { url: string; label: string }[]> = {
   ],
   machinery: [
     { url: 'https://www.themanufacturer.com/feed/',                                         label: 'The Manufacturer' },
+    { url: 'https://www.chemengonline.com/feed/',                                            label: 'Chemical Engineering' },
   ],
   environment: [
     { url: 'https://cleantechnica.com/feed/',                                                label: 'CleanTechnica' },
