@@ -383,6 +383,58 @@ async function fetchRss(url: string, label: string, sectorHint?: string): Promis
   } catch { return [] }
 }
 
+// ─── AI 辅助板块分类（兜底：对关键词未命中的文章批量打标） ─────────────────────
+const SECTOR_ID_LIST = SECTORS.filter(s => s.id !== 'all').map(s => s.id).join(',')
+
+async function aiClassifyUnlabeled(items: NewsItem[]): Promise<void> {
+  const key = process.env.DEEPSEEK_API_KEY
+  if (!key) return
+
+  const unlabeled = items.filter(i => i.sectors.length === 0)
+  if (unlabeled.length === 0) return
+
+  const BATCH = 60
+  const batches: NewsItem[][] = []
+  for (let i = 0; i < Math.min(unlabeled.length, 120); i += BATCH) {
+    batches.push(unlabeled.slice(i, i + BATCH))
+  }
+
+  await Promise.all(batches.map(async batch => {
+    const titles = batch.map((item, idx) => `${idx + 1}. ${item.title}`).join('\n')
+    try {
+      const res = await axios.post(
+        'https://api.deepseek.com/chat/completions',
+        {
+          model: 'deepseek-chat',
+          messages: [{
+            role: 'user',
+            content: `财经新闻板块分类。板块ID：${SECTOR_ID_LIST}\n`
+              + `将下列标题分类，只返回JSON二维数组（每条对应板块ID数组，不相关财经填[]）：\n${titles}`,
+          }],
+          temperature: 0.1,
+          max_tokens: 600,
+          stream: false,
+        },
+        {
+          headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+          timeout: 10000,
+        }
+      )
+      const text: string = res.data?.choices?.[0]?.message?.content || '[]'
+      const match = text.match(/\[[\s\S]*\]/)
+      if (!match) return
+      const classified: unknown = JSON.parse(match[0])
+      if (!Array.isArray(classified)) return
+      batch.forEach((item, idx) => {
+        const row = (classified as unknown[])[idx]
+        if (Array.isArray(row) && row.length > 0) {
+          item.sectors = (row as unknown[]).filter((s): s is string => typeof s === 'string')
+        }
+      })
+    } catch { /* 超时或解析失败 — 保持 sectors 不变 */ }
+  }))
+}
+
 export async function translateTitles(items: NewsItem[]): Promise<NewsItem[]> {
   const key = process.env.DEEPSEEK_API_KEY
   if (!key) return items
@@ -498,6 +550,13 @@ export async function fetchNews(sectorFilter?: string, translate = false): Promi
   }
 
   all = all.slice(0, 300)  // 提高上限，配合时间过滤后仍保留充足信息
+
+  // ── AI 兜底分类：对关键词未命中的文章批量打板块标签 ─────────────────────────
+  // 用 Promise.race 保证不超过 12s，不阻塞正常响应
+  await Promise.race([
+    aiClassifyUnlabeled(all),
+    new Promise<void>(resolve => setTimeout(resolve, 12000)),
+  ])
 
   // ── 合并进进程级 article store（URL 级去重 + 为情绪分析提供指纹） ────────────
   mergeArticles(all)
