@@ -1,0 +1,9 @@
+{
+  "/page": "app/page.js",
+  "/sentiment/page": "app/sentiment/page.js",
+  "/news/page": "app/news/page.js",
+  "/api/news/route": "app/api/news/route.js",
+  "/api/sentiment/route": "app/api/sentiment/route.js",
+  "/subscribe/page": "app/subscribe/page.js",
+  "/api/subscribe/route": "app/api/subscribe/route.js"
+}
