@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { Loader2, Languages, RefreshCw, ExternalLink, Search, X } from 'lucide-react'
 import SectorSelector from '@/components/SectorSelector'
+import { SECTORS } from '@/lib/news'
 
 interface NewsItem {
   title: string
@@ -192,7 +193,7 @@ export default function NewsPage() {
         {(updatedAt || refreshing) && (
           <div className="flex items-center gap-1.5 text-xs text-gray-700">
             {refreshing && <Loader2 size={10} className="animate-spin" />}
-            {updatedAt && <span>更新于 {new Date(updatedAt).toLocaleString('zh-CN')}</span>}
+            {updatedAt && <span>更新于 {new Date(updatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}</span>}
           </div>
         )}
 
@@ -233,7 +234,9 @@ export default function NewsPage() {
                         <span className="text-[10px] text-gray-600">{timeAgo(item.pubDate)}</span>
                       )}
                       {item.sectors.slice(0, 2).map(s => (
-                        <span key={s} className="text-[10px] bg-accent/10 text-accent px-1.5 py-0.5 rounded">{s}</span>
+                        <span key={s} className="text-[10px] bg-accent/10 text-accent px-1.5 py-0.5 rounded">
+                          {SECTORS.find(sec => sec.id === s)?.name ?? s}
+                        </span>
                       ))}
                     </div>
                   </div>

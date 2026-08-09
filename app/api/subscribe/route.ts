@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email'
 import { addSubscriber, buildUnsubscribeUrl, getSubscriberByEmail, unsubscribeContact } from '@/lib/subscribers'
 
+// ── 简单内存 rate limiter：同 IP 10 分钟内最多 3 次订阅 POST ─────────────────
+// 注意：Lambda 多实例间不共享，但已能有效阻止单机脚本攻击
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+const RATE_LIMIT_MAX = 3
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now()
+  const entry = rateLimitMap.get(ip)
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+    return true
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return false
+  entry.count++
+  return true
+}
+
 const TIME_LABELS: Record<string, string> = {
   '730': '07:30',
   '800': '08:00',
@@ -10,6 +28,12 @@ const TIME_LABELS: Record<string, string> = {
 }
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 同 IP 10 分钟内最多 3 次
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+  if (!checkRateLimit(ip)) {
+    return NextResponse.json({ error: '请求过于频繁，请稍后再试' }, { status: 429 })
+  }
+
   const body = await req.json()
   const email: string = body.email
   // 兼容老前端：deliveryTime 缺省时默认 800

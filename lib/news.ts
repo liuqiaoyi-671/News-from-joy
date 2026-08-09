@@ -552,10 +552,10 @@ export async function fetchNews(sectorFilter?: string, translate = false): Promi
   all = all.slice(0, 300)  // 提高上限，配合时间过滤后仍保留充足信息
 
   // ── AI 兜底分类：对关键词未命中的文章批量打板块标签 ─────────────────────────
-  // 用 Promise.race 保证不超过 12s，不阻塞正常响应
+  // 用 Promise.race 保证不超过 7s（Vercel Hobby 最大 10s，留 3s 给打包响应）
   await Promise.race([
     aiClassifyUnlabeled(all),
-    new Promise<void>(resolve => setTimeout(resolve, 12000)),
+    new Promise<void>(resolve => setTimeout(resolve, 7000)),
   ])
 
   // ── 合并进进程级 article store（URL 级去重 + 为情绪分析提供指纹） ────────────

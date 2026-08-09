@@ -89,13 +89,13 @@ const INDICATOR_NOTES: Record<string, string> = {
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('q') || ''
-  if (!q.trim()) return { ids: [], label: '' }
+  if (!q.trim()) return NextResponse.json({ ids: [], label: '' })
   const fresh = req.nextUrl.searchParams.get('fresh') === '1'
 
   // 同 query 24h 缓存
   const result = await cached(`ai-suggest:${q.trim().toLowerCase()}`, () =>
     runSuggest(q), { ttl: 24 * 3600_000, fresh })
-  return result
+  return NextResponse.json(result)
 }
 
 async function runSuggest(q: string): Promise<{ ids: string[]; label: string; source?: string }> {
