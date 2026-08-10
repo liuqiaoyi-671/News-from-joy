@@ -2,6 +2,7 @@ import Parser from 'rss-parser'
 import axios from 'axios'
 import { fetchChineseNews, searchByKeyword, type CNewsItem } from './cnews'
 import { mergeArticles, getArticles, storeSize } from './article-store'
+import { translateToZH, isBaiduTranslateEnabled } from './baidu-translate'
 
 const parser = new Parser({ timeout: 5000 })
 
@@ -436,10 +437,20 @@ async function aiClassifyUnlabeled(items: NewsItem[]): Promise<void> {
 }
 
 export async function translateTitles(items: NewsItem[]): Promise<NewsItem[]> {
-  const key = process.env.DEEPSEEK_API_KEY
-  if (!key) return items
   const enItems = items.filter(i => i.lang === 'en' && !i.translatedTitle)
   if (!enItems.length) return items
+
+  // 优先用百度翻译（快速、低成本、专用翻译服务）
+  if (isBaiduTranslateEnabled()) {
+    const titles = enItems.map(i => i.title)
+    const translated = await translateToZH(titles)
+    enItems.forEach((item, i) => { if (translated[i] !== item.title) item.translatedTitle = translated[i] })
+    return items
+  }
+
+  // 降级：用 DeepSeek（需要 AI key，慢约 5-10s，但不用单独注册）
+  const key = process.env.DEEPSEEK_API_KEY
+  if (!key) return items
   try {
     const titles = enItems.map((i, idx) => `${idx + 1}. ${i.title}`).join('\n')
     const res = await axios.post(
@@ -462,7 +473,7 @@ export async function translateTitles(items: NewsItem[]): Promise<NewsItem[]> {
       const translated: string[] = JSON.parse(match[0])
       enItems.forEach((item, i) => { if (translated[i]) item.translatedTitle = translated[i] })
     }
-  } catch { /* fallback */ }
+  } catch { /* fallback: 原标题不变 */ }
   return items
 }
 
@@ -501,7 +512,7 @@ export async function searchNews(query: string, translate = false): Promise<News
   all.sort((a, b) => parsePubDate(b.pubDate) - parsePubDate(a.pubDate))
   all = filterByRecency(all)
   all = all.slice(0, 200)
-  if (translate) all = await translateTitles(all)
+  if (translate || isBaiduTranslateEnabled()) all = await translateTitles(all)
   return all
 }
 
@@ -549,6 +560,19 @@ export async function fetchNews(sectorFilter?: string, translate = false): Promi
     }
   }
 
+  // ── 来源多样性限制：同一来源在同一板块视图最多显示 3 条，避免单一媒体刷屏 ──
+  // 例如：新浪财经·行业 连发 6 条"华为折叠本"→ 只保留最新 3 条
+  if (sectorFilter && sectorFilter !== 'all') {
+    const sourceCap = new Map<string, number>()
+    all = all.filter(item => {
+      const key = item.source
+      const n = sourceCap.get(key) || 0
+      if (n >= 3) return false
+      sourceCap.set(key, n + 1)
+      return true
+    })
+  }
+
   all = all.slice(0, 300)  // 提高上限，配合时间过滤后仍保留充足信息
 
   // ── AI 兜底分类：对关键词未命中的文章批量打板块标签 ─────────────────────────
@@ -561,7 +585,8 @@ export async function fetchNews(sectorFilter?: string, translate = false): Promi
   // ── 合并进进程级 article store（URL 级去重 + 为情绪分析提供指纹） ────────────
   mergeArticles(all)
 
-  if (translate) all = await translateTitles(all)
+  // 自动翻译英文标题：百度翻译已配置时静默翻译；未配置时仍需手动点按钮
+  if (translate || isBaiduTranslateEnabled()) all = await translateTitles(all)
   return all
 }
 

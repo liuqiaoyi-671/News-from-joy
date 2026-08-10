@@ -90,12 +90,24 @@ export default function NewsPage() {
       if (q) params.set('q', q)
       if (withTranslate) params.set('translate', '1')
 
+      const FALLBACK_MAX_AGE_MS = 6 * 60 * 60 * 1000  // 静态兜底文件超过 6h 不使用
       let res: { articles?: unknown[]; updatedAt?: string } = {}
       try {
         res = await fetch(`/api/news?${params}`, { cache: 'no-store' }).then(r => r.json())
       } catch {
         for (const u of ['./news-data.json', '/news-data.json']) {
-          try { const r = await fetch(u); if (r.ok) { res = await r.json(); break } } catch { /* try next */ }
+          try {
+            const r = await fetch(u)
+            if (!r.ok) continue
+            const fb = await r.json()
+            // 兜底文件过期（>6h）时拒绝使用，避免展示陈旧数据
+            if (fb.updatedAt && Date.now() - new Date(fb.updatedAt).getTime() > FALLBACK_MAX_AGE_MS) {
+              console.warn('[news] fallback JSON is stale, skipping')
+              break
+            }
+            res = fb
+            break
+          } catch { /* try next */ }
         }
       }
 

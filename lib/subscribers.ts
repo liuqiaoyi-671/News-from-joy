@@ -1,5 +1,5 @@
 import { Resend } from 'resend'
-import { createHmac } from 'crypto'
+import { createHmac, timingSafeEqual } from 'crypto'
 import fs from 'fs'
 import path from 'path'
 
@@ -166,15 +166,24 @@ export async function unsubscribeContact(email: string): Promise<void> {
 
 // ── 退订链接生成 ───────────────────────────────────────────────────────────────
 
-/** 用 CRON_SECRET 对 email 做 HMAC-SHA256，生成 URL 安全令牌 */
+/** 用 UNSUBSCRIBE_SECRET 对 email 做 HMAC-SHA256，生成 URL 安全令牌 */
 export function signUnsubscribeToken(email: string): string {
-  const secret = process.env.CRON_SECRET || 'unsub-secret'
+  const secret = process.env.UNSUBSCRIBE_SECRET
+  if (!secret) throw new Error('UNSUBSCRIBE_SECRET env var is not set')
   return createHmac('sha256', secret).update(email).digest('base64url')
 }
 
-/** 验证退订令牌（时间无关，只要 secret 一致即可） */
+/** 验证退订令牌（恒时比较，防止时序攻击） */
 export function verifyUnsubscribeToken(email: string, token: string): boolean {
-  return signUnsubscribeToken(email) === token
+  const secret = process.env.UNSUBSCRIBE_SECRET
+  if (!secret) return false
+  try {
+    const expected = createHmac('sha256', secret).update(email).digest('base64url')
+    const a = Buffer.from(expected, 'utf8')
+    const b = Buffer.from(token, 'utf8')
+    if (a.length !== b.length) return false
+    return timingSafeEqual(a, b)
+  } catch { return false }
 }
 
 /** 构造个人化退订链接，嵌入所有发出的邮件 */

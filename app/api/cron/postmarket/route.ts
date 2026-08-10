@@ -14,15 +14,23 @@ export const maxDuration = 300
  * 测试触发：GET /api/cron/postmarket?test=1
  *   不需要 secret，仅发给 DEFAULT_TO_EMAIL
  *
- * 生产触发：GET /api/cron/postmarket?secret=$CRON_SECRET
- *   发给所有订阅者 + DEFAULT_TO_EMAIL
+ * 生产触发：GET /api/cron/postmarket
+ *   Header: Authorization: Bearer $CRON_SECRET
+ *   发给所有订阅者
  */
 export async function GET(req: NextRequest) {
   const test = req.nextUrl.searchParams.get('test') === '1'
 
+  // 鉴权（fail-closed：CRON_SECRET 未设置时拒绝所有非 test 请求）
   if (!test) {
-    const secret = req.nextUrl.searchParams.get('secret')
-    if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET) {
+    const cronSecret = process.env.CRON_SECRET
+    if (!cronSecret) {
+      console.error('[postmarket cron] CRON_SECRET is not set — refusing request')
+      return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+    }
+    const authHeader = req.headers.get('authorization')
+    const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+    if (bearer !== cronSecret) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
     }
   }
@@ -47,27 +55,19 @@ export async function GET(req: NextRequest) {
       recipients = Array.from(new Set(subs))
     }
 
-    const sent: string[] = []
-    const errors: { email: string; error: string }[] = []
+    let sentCount = 0
+    let failCount = 0
     for (const email of recipients) {
       try {
-        // 每个收件人生成含个人化退订链接的 HTML
         await sendEmail({ to: email, subject, html: buildPostmarketEmailHtml(text, email) })
-        sent.push(email)
+        sentCount++
       } catch (e) {
-        errors.push({ email, error: String(e) })
+        console.error('[postmarket cron] send failed for subscriber:', e)
+        failCount++
       }
     }
 
-    return NextResponse.json({
-      ok: true,
-      sentCount: sent.length,
-      sent,
-      errors,
-      newsCount,
-      modelUsed,
-      previewText: text.slice(0, 300),
-    })
+    return NextResponse.json({ ok: true, sentCount, failCount, newsCount, modelUsed, status: 'done' })
   } catch (err) {
     console.error('[postmarket cron]', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })

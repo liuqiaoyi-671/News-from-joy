@@ -1,4 +1,4 @@
-export type IndicatorType = 'cn_index' | 'us' | 'commodity' | 'crypto' | 'bond' | 'fx'
+export type IndicatorType = 'cn_index' | 'us' | 'hk' | 'commodity' | 'crypto' | 'bond' | 'fx'
 
 export interface Indicator {
   id: string
@@ -92,15 +92,15 @@ export const INDICATOR_CATALOG: Record<string, Indicator> = {
 
   // ─── 港股 & 亚太 ───────────────────────────────────────────────────
   hsi:       { id: 'hsi',       name: '恒生指数',     type: 'us',       symbol: '^HSI' },
-  hstech:    { id: 'hstech',    name: '恒生科技',     type: 'us',       symbol: '3033.HK' },
+  hstech:    { id: 'hstech',    name: '恒生科技ETF',  type: 'hk',       symbol: '3033.HK' },
   n225:      { id: 'n225',      name: '日经225',      type: 'us',       symbol: '^N225' },
 
   // ─── 宏观/情绪 ──────────────────────────────────────────────────────
   vix:       { id: 'vix',       name: 'VIX恐慌指数',  type: 'us',       symbol: '^VIX',    description: '市场恐慌程度' },
   ust10y:    { id: 'ust10y',    name: '10年期美债',   type: 'bond',     symbol: '^TNX',    unit: '%' },
-  ust2y:     { id: 'ust2y',     name: '2年期美债',    type: 'bond',     symbol: '^FVX',    unit: '%' },
+  ust2y:     { id: 'ust2y',     name: '2年期美债',    type: 'bond',     symbol: '^IRX',    unit: '%' },
   dxy:       { id: 'dxy',       name: '美元指数',     type: 'fx',       symbol: 'DX-Y.NYB' },
-  cnyusd:    { id: 'cnyusd',    name: '人民币/美元',  type: 'fx',       symbol: 'CNY=X' },
+  cnyusd:    { id: 'cnyusd',    name: '美元/人民币',  type: 'fx',       symbol: 'CNY=X',   description: 'USD/CNY，数值越大人民币越弱' },
 
   // ─── 大宗商品 ───────────────────────────────────────────────────────
   oil:       { id: 'oil',       name: 'WTI原油',      type: 'commodity', symbol: 'CL=F',   unit: '$/桶' },
@@ -113,7 +113,7 @@ export const INDICATOR_CATALOG: Record<string, Indicator> = {
   soybean:   { id: 'soybean',   name: '大豆期货',     type: 'commodity', symbol: 'ZS=F',   unit: '美分/蒲' },
   corn:      { id: 'corn',      name: '玉米期货',     type: 'commodity', symbol: 'ZC=F',   unit: '美分/蒲' },
   wheat:     { id: 'wheat',     name: '小麦期货',     type: 'commodity', symbol: 'ZW=F',   unit: '美分/蒲' },
-  hogs:      { id: 'hogs',      name: '生猪期货',     type: 'commodity', symbol: 'HE=F',   unit: '美分/磅' },
+  // hogs 已移除：HE=F 是芝加哥瘦肉猪期货，与 A 股生猪板块无直接关联
   cattle:    { id: 'cattle',    name: '活牛期货',     type: 'commodity', symbol: 'LE=F',   unit: '美分/磅' },
   sugar:     { id: 'sugar',     name: '白糖期货',     type: 'commodity', symbol: 'SB=F',   unit: '美分/磅' },
   coffee:    { id: 'coffee',    name: '咖啡期货',     type: 'commodity', symbol: 'KC=F',   unit: '美分/磅' },
@@ -145,8 +145,8 @@ export const BASE_US = ['spx', 'ndx', 'dji', 'vix', 'ust10y', 'oil', 'gold', 'dx
 
 // ─── 预设话题 → 指标映射（AI 回退时使用）───────────────────────────
 export const TOPIC_PRESETS: Record<string, string[]> = {
-  农业:     ['soybean', 'corn', 'wheat', 'hogs', 'cotton', 'sugar', 'agri_etf', 'dxy', 'oil'],
-  粮食:     ['soybean', 'corn', 'wheat', 'hogs', 'agri_etf', 'dxy'],
+  农业:     ['soybean', 'corn', 'wheat', 'cattle', 'cotton', 'sugar', 'agri_etf', 'dxy', 'oil'],
+  粮食:     ['soybean', 'corn', 'wheat', 'cattle', 'agri_etf', 'dxy'],
   新能源:   ['copper', 'tsla', 'li_etf', 'solar_etf', 'oil', 'natgas', 'gem', 'metal_etf'],
   光伏:     ['solar_etf', 'copper', 'silver', 'gem', 'li_etf'],
   储能:     ['li_etf', 'metal_etf', 'copper', 'solar_etf'],

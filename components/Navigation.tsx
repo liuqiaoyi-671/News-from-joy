@@ -15,36 +15,22 @@ export default function Navigation() {
             <span className="font-bold text-base">市场仪表盘</span>
           </div>
           <nav className="flex gap-1">
-            <Link
-              href="/news"
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                path === '/news'
-                  ? 'bg-accent text-white'
-                  : 'text-gray-400 hover:text-gray-200 hover:bg-bg-card'
-              }`}
-            >
-              📰 资讯
-            </Link>
-            <Link
-              href="/sentiment"
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                path === '/sentiment'
-                  ? 'bg-accent text-white'
-                  : 'text-gray-400 hover:text-gray-200 hover:bg-bg-card'
-              }`}
-            >
-              📊 情绪雷达
-            </Link>
-            <Link
-              href="/subscribe"
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                path === '/subscribe'
-                  ? 'bg-accent text-white'
-                  : 'text-gray-400 hover:text-gray-200 hover:bg-bg-card'
-              }`}
-            >
-              📧 订阅
-            </Link>
+            {[
+              { href: '/market',    label: '📈 行情' },
+              { href: '/news',      label: '📰 资讯' },
+              { href: '/sentiment', label: '📊 情绪' },
+              { href: '/subscribe', label: '📧 订阅' },
+            ].map(({ href, label }) => (
+              <Link key={href} href={href}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  path === href
+                    ? 'bg-accent text-white'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-bg-card'
+                }`}
+              >
+                {label}
+              </Link>
+            ))}
           </nav>
         </div>
         <EmailSubscribe />

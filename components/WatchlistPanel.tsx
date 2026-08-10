@@ -39,7 +39,7 @@ const CATALOG_GROUPS = [
   // ── 宏观/大宗/加密 ──────────────────────────────────────────────
   { name: '宏观/债券',  ids: ['vix', 'ust10y', 'ust2y', 'dxy', 'cnyusd'] },
   { name: '大宗商品',   ids: ['oil', 'gold', 'silver', 'copper', 'natgas'] },
-  { name: '农产品期货', ids: ['soybean', 'corn', 'wheat', 'hogs', 'cattle', 'sugar', 'coffee', 'cotton'] },
+  { name: '农产品期货', ids: ['soybean', 'corn', 'wheat', 'cattle', 'sugar', 'coffee', 'cotton'] },
   { name: '加密货币',   ids: ['btc', 'eth'] },
 ]
 

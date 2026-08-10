@@ -172,66 +172,136 @@ export async function searchByKeyword(keyword: string): Promise<CNewsItem[]> {
 }
 
 // 搜索关键词 → 板块 ID 映射（用于给搜索结果打 sourceSector 标签）
+// 关键词越专业越精准，行业研究员实际追踪的术语优先
 const KEYWORD_SECTOR_MAP: Record<string, string> = {
-  // 宏观/政策
-  '央行': 'macro',        '美联储': 'macro',      '降准降息': 'macro',
-  '财政政策': 'macro',    '货币政策': 'macro',    '经济数据': 'macro',
-  'PMI': 'macro',         'CPI': 'macro',          'GDP': 'macro',
-  // 金融
-  '银行股': 'finance',    '券商': 'finance',       '保险': 'finance',
-  '基金': 'finance',      '债券': 'finance',       '信托': 'finance',
-  // 房地产
-  '房地产': 'realestate', '楼市': 'realestate',   '地产政策': 'realestate',
-  '物业管理': 'realestate','新房销售': 'realestate','房企': 'realestate',
-  // 能源
-  '原油': 'energy',       '煤炭': 'energy',        '天然气': 'energy',
-  '石油化工': 'energy',   '成品油': 'energy',      '液化天然气': 'energy',
-  // 新能源
-  '光伏': 'newenergy',    '锂电池': 'newenergy',   '储能': 'newenergy',
-  '风电': 'newenergy',    '碳酸锂': 'newenergy',   '充电桩': 'newenergy',
-  // 农业
-  '生猪': 'agriculture',  '大豆': 'agriculture',   '玉米': 'agriculture',
-  '小麦': 'agriculture',  '猪价': 'agriculture',   '农产品': 'agriculture',
-  '豆粕': 'agriculture',  '养殖': 'agriculture',
-  // 食品饮料
-  '白酒': 'food',         '食品饮料': 'food',      '啤酒': 'food',
-  '乳制品': 'food',       '茅台': 'food',          '调味品': 'food',
-  // 化工
-  '化工行业': 'chemicals', '纯碱': 'chemicals',    'PTA': 'chemicals',
-  '聚酯': 'chemicals',    '农药': 'chemicals',      '化肥': 'chemicals',
-  // 钢铁/有色
-  '钢铁': 'metals',       '有色金属': 'metals',    '铜价': 'metals',
-  '铝': 'metals',         '螺纹钢': 'metals',       '铁矿石': 'metals',
-  // 医药
-  '创新药': 'pharma',     '医疗器械': 'pharma',    '集采': 'pharma',
-  'CXO': 'pharma',        '医保': 'pharma',         '生物制药': 'pharma',
-  // AI/科技
-  '人工智能': 'ai',       '大模型': 'ai',           '算力': 'ai',
-  '数据中心': 'ai',       '云计算': 'ai',           'DeepSeek': 'ai',
-  // 半导体
-  '半导体': 'semiconductor', '芯片': 'semiconductor', '信创': 'semiconductor',
-  '集成电路': 'semiconductor', '晶圆': 'semiconductor', '光刻机': 'semiconductor',
-  // 汽车
-  '新能源车': 'auto',     '智能驾驶': 'auto',      '比亚迪': 'auto',
-  '汽车销量': 'auto',     '车企': 'auto',           '电动车': 'auto',
-  // 消费/零售
-  '消费电子': 'consumer', '家电': 'consumer',       '零售': 'consumer',
-  '旅游': 'consumer',     '免税': 'consumer',       '直播电商': 'consumer',
-  // 军工
-  '军工': 'defense',      '航天': 'defense',        '国防': 'defense',
-  '商业航天': 'defense',  '军费': 'defense',
-  // 通信
-  '5G': 'telecom',        '6G': 'telecom',          '卫星通信': 'telecom',
-  '运营商': 'telecom',    '物联网': 'telecom',
-  // 机械
-  '工程机械': 'machinery', '机器人': 'machinery',   '工业自动化': 'machinery',
-  '数控机床': 'machinery', '挖掘机': 'machinery',
-  // 环保/公用
-  '环保': 'environment',  '碳交易': 'environment', '电力': 'environment',
-  '核电': 'environment',  '水务': 'environment',
-  // 交通运输
-  '航运': 'transport',    '物流': 'transport',      '快递': 'transport',
-  '集运': 'transport',    '民航': 'transport',      '港口': 'transport',
+  // ── 宏观/政策 ──────────────────────────────────────────────────────────────
+  '央行': 'macro',          '美联储': 'macro',       '降准降息': 'macro',
+  '财政政策': 'macro',      '货币政策': 'macro',     '经济数据': 'macro',
+  'PMI': 'macro',           'CPI': 'macro',           'GDP': 'macro',
+  '社融': 'macro',          'M2': 'macro',            '存款准备金': 'macro',
+  '外汇储备': 'macro',      '贸易顺差': 'macro',     '工业增加值': 'macro',
+
+  // ── 金融 ──────────────────────────────────────────────────────────────────
+  '银行股': 'finance',      '券商': 'finance',        '保险': 'finance',
+  '基金': 'finance',        '债券': 'finance',        '信托': 'finance',
+  '信用债': 'finance',      '城投债': 'finance',      '北向资金': 'finance',
+  '融资融券': 'finance',    'SHIBOR': 'finance',      '存款利率': 'finance',
+
+  // ── 房地产 ────────────────────────────────────────────────────────────────
+  '房地产': 'realestate',   '楼市': 'realestate',    '地产政策': 'realestate',
+  '物业管理': 'realestate', '新房销售': 'realestate', '房企': 'realestate',
+  '30城成交': 'realestate', '土地溢价': 'realestate', '去化周期': 'realestate',
+  '库存面积': 'realestate', '新开工': 'realestate',   '竣工面积': 'realestate',
+
+  // ── 能源 ──────────────────────────────────────────────────────────────────
+  '原油': 'energy',         '煤炭': 'energy',         '天然气': 'energy',
+  '石油化工': 'energy',     '成品油': 'energy',       '液化天然气': 'energy',
+  '动力煤': 'energy',       '焦煤': 'energy',         '焦炭': 'energy',
+  'Q5500': 'energy',        '坑口价': 'energy',       '秦港库存': 'energy',
+  '煤矿安全': 'energy',     '保供': 'energy',         '电煤': 'energy',
+  '进口煤': 'energy',       '煤炭产量': 'energy',
+
+  // ── 新能源 ────────────────────────────────────────────────────────────────
+  '光伏': 'newenergy',      '锂电池': 'newenergy',    '储能': 'newenergy',
+  '风电': 'newenergy',      '碳酸锂': 'newenergy',    '充电桩': 'newenergy',
+  '硅料': 'newenergy',      '组件价格': 'newenergy',  '逆变器': 'newenergy',
+  '磷酸铁锂': 'newenergy',  '三元材料': 'newenergy',  '电芯': 'newenergy',
+  '隔膜': 'newenergy',      '电解液': 'newenergy',    '硫酸钴': 'newenergy',
+  '锂价': 'newenergy',      '装机量': 'newenergy',    '海上风电': 'newenergy',
+
+  // ── 农林牧渔（细分专业术语覆盖，直接从行业媒体提取）─────────────────────
+  '生猪': 'agriculture',    '大豆': 'agriculture',    '玉米': 'agriculture',
+  '小麦': 'agriculture',    '猪价': 'agriculture',    '农产品': 'agriculture',
+  '豆粕': 'agriculture',    '养殖': 'agriculture',    '仔猪价格': 'agriculture',
+  '能繁母猪': 'agriculture','出栏量': 'agriculture',  '猪粮比': 'agriculture',
+  '豆油': 'agriculture',    '菜粕': 'agriculture',    '鱼粉': 'agriculture',
+  '禽价': 'agriculture',    '蛋价': 'agriculture',    '禽流感': 'agriculture',
+  '非洲猪瘟': 'agriculture','饲料成本': 'agriculture','水产养殖': 'agriculture',
+  '白羽鸡': 'agriculture',  '种猪': 'agriculture',    '棕榈油': 'agriculture',
+  '南美大豆': 'agriculture','USDA': 'agriculture',
+
+  // ── 食品饮料 ──────────────────────────────────────────────────────────────
+  '白酒': 'food',           '食品饮料': 'food',       '啤酒': 'food',
+  '乳制品': 'food',         '茅台': 'food',           '调味品': 'food',
+  '茅台批价': 'food',       '飞天茅台': 'food',       '酱香型': 'food',
+  '春糖': 'food',           '秋糖': 'food',           '白酒库存': 'food',
+  '餐饮景气': 'food',
+
+  // ── 化工 ──────────────────────────────────────────────────────────────────
+  '化工行业': 'chemicals',  '纯碱': 'chemicals',      'PTA': 'chemicals',
+  '聚酯': 'chemicals',      '农药': 'chemicals',       '化肥': 'chemicals',
+  'PVC': 'chemicals',       '聚丙烯': 'chemicals',    '苯乙烯': 'chemicals',
+  'MDI': 'chemicals',       'TDI': 'chemicals',        '钛白粉': 'chemicals',
+  '甲醇': 'chemicals',      '氨纶': 'chemicals',      '粘胶': 'chemicals',
+  '尿素': 'chemicals',      '磷肥': 'chemicals',      '煤化工': 'chemicals',
+
+  // ── 钢铁/有色 ─────────────────────────────────────────────────────────────
+  '钢铁': 'metals',         '有色金属': 'metals',     '铜价': 'metals',
+  '铝': 'metals',           '螺纹钢': 'metals',        '铁矿石': 'metals',
+  '铜现货': 'metals',       '电解铜': 'metals',        '废铜': 'metals',
+  '铝锭': 'metals',         '锌锭': 'metals',          '镍价': 'metals',
+  '钴价': 'metals',         '铅锭': 'metals',          '黄金现货': 'metals',
+  '铜精矿': 'metals',       'TC费用': 'metals',        '矿山': 'metals',
+
+  // ── 医药 ──────────────────────────────────────────────────────────────────
+  '创新药': 'pharma',       '医疗器械': 'pharma',     '集采': 'pharma',
+  'CXO': 'pharma',          '医保': 'pharma',          '生物制药': 'pharma',
+  'NDA': 'pharma',          'IND': 'pharma',           'NMPA': 'pharma',
+  '1类新药': 'pharma',      '生物类似药': 'pharma',   '细胞治疗': 'pharma',
+  'ADC': 'pharma',          'mRNA': 'pharma',          '基因疗法': 'pharma',
+  '药品审批': 'pharma',     '医保谈判': 'pharma',     '带量采购': 'pharma',
+
+  // ── AI/科技 ───────────────────────────────────────────────────────────────
+  '人工智能': 'ai',         '大模型': 'ai',            '算力': 'ai',
+  '数据中心': 'ai',         '云计算': 'ai',            'DeepSeek': 'ai',
+  '智算中心': 'ai',         '液冷': 'ai',              'GPU服务器': 'ai',
+  '国产大模型': 'ai',       'Kimi': 'ai',              '文心一言': 'ai',
+  '信创': 'ai',             '数字政府': 'ai',
+
+  // ── 半导体 ────────────────────────────────────────────────────────────────
+  '半导体': 'semiconductor','芯片': 'semiconductor',  '集成电路': 'semiconductor',
+  '晶圆': 'semiconductor',  '光刻机': 'semiconductor','先进封装': 'semiconductor',
+  'HBM': 'semiconductor',   'CoWoS': 'semiconductor', 'N2': 'semiconductor',
+  '台积电': 'semiconductor','中芯国际': 'semiconductor','北方华创': 'semiconductor',
+  '刻蚀机': 'semiconductor','CVD': 'semiconductor',   '功率半导体': 'semiconductor',
+  'AMOLED': 'semiconductor','面板价格': 'semiconductor',
+
+  // ── 汽车 ──────────────────────────────────────────────────────────────────
+  '新能源车': 'auto',       '智能驾驶': 'auto',       '比亚迪': 'auto',
+  '汽车销量': 'auto',       '车企': 'auto',            '电动车': 'auto',
+  '渗透率': 'auto',         '插混': 'auto',            'PHEV': 'auto',
+  '出口量': 'auto',         '价格战': 'auto',          '乘联会': 'auto',
+  '理想汽车': 'auto',       '小鹏': 'auto',            '特斯拉交付': 'auto',
+
+  // ── 消费/零售 ─────────────────────────────────────────────────────────────
+  '消费电子': 'consumer',   '家电': 'consumer',        '零售': 'consumer',
+  '旅游': 'consumer',       '免税': 'consumer',        '直播电商': 'consumer',
+  '社零': 'consumer',       '消费复苏': 'consumer',    '出行数据': 'consumer',
+
+  // ── 军工 ──────────────────────────────────────────────────────────────────
+  '军工': 'defense',        '航天': 'defense',         '国防': 'defense',
+  '商业航天': 'defense',    '军费': 'defense',         '卫星': 'defense',
+  '航发动力': 'defense',    '歼': 'defense',           '舰船': 'defense',
+
+  // ── 通信 ──────────────────────────────────────────────────────────────────
+  '5G': 'telecom',          '6G': 'telecom',           '卫星通信': 'telecom',
+  '运营商': 'telecom',      '物联网': 'telecom',       '低轨卫星': 'telecom',
+  'Starlink': 'telecom',    '天地一体': 'telecom',
+
+  // ── 机械 ──────────────────────────────────────────────────────────────────
+  '工程机械': 'machinery',  '机器人': 'machinery',     '工业自动化': 'machinery',
+  '数控机床': 'machinery',  '挖掘机': 'machinery',     '人形机器人': 'machinery',
+  '工业母机': 'machinery',
+
+  // ── 环保/公用 ─────────────────────────────────────────────────────────────
+  '环保': 'environment',    '碳交易': 'environment',  '电力': 'environment',
+  '核电': 'environment',    '水务': 'environment',     '碳排放权': 'environment',
+  '绿证': 'environment',
+
+  // ── 交通运输 ──────────────────────────────────────────────────────────────
+  '航运': 'transport',      '物流': 'transport',       '快递': 'transport',
+  '集运': 'transport',      '民航': 'transport',       '港口': 'transport',
+  'SCFI': 'transport',      'BDI': 'transport',        '运价指数': 'transport',
 }
 
 // 每个行业 1-2 个高区分度关键词 — 确保跨行业均衡覆盖
@@ -253,7 +323,9 @@ async function fetchRssZH(url: string, label: string, limit = 20): Promise<CNews
 }
 
 // ⚠️ 已移除失效源：证券时报 RSS（官网404，内容已由"东财搜索·证券时报e公司"覆盖）
-const ZH_RSS_SOURCES = [
+
+// ── 通用财经 RSS ───────────────────────────────────────────────────────────────
+const ZH_RSS_SOURCES_GENERAL = [
   { url: 'https://www.yicai.com/rss/news.xml',                          label: '第一财经' },
   { url: 'https://wallstreetcn.com/rss',                                label: '华尔街见闻' },
   { url: 'https://36kr.com/feed',                                       label: '36氪' },
@@ -261,6 +333,69 @@ const ZH_RSS_SOURCES = [
   { url: 'https://www.tmtpost.com/feed',                                label: '钛媒体' },
   { url: 'https://a.jiemian.com/index.php?m=article&a=rss',           label: '界面新闻' },
   { url: 'http://rss.sina.com.cn/finance/future.xml',                  label: '新浪·期货' },
+]
+
+// ── 行业专属垂直媒体 RSS ───────────────────────────────────────────────────────
+// 每个板块挂 1-3 个专业来源，仅该板块请求时拉取（减少无关干扰）
+// 说明：
+//   - 集微网 (jiemi.cn)       → 半导体/芯片，每日原创新闻
+//   - 芯东西 (xindonxi.cn)    → 半导体/消费电子，深度报道
+//   - 高工锂电 (gglithium)    → 锂电/新能源，产业链价格
+//   - 我的钢铁 Mysteel        → 钢铁/有色，行业权威
+//   - SMM 上海有色             → 铜/铝/镍/钴等大宗金属
+//   - 健康界 (cn-healthcare)   → 医药/医疗，政策+临床
+//   - 赛柏蓝 (saibull)        → 医药，政策带量采购重点
+//   - 农财宝典 / 新牧网        → 农牧，养殖+饲料原料
+//   - 中国化工网               → 化工
+//   - 粮油市场报               → 食品饮料上游原料
+//   - 能源界 (nengyuanjie)    → 能源/煤炭/天然气
+//   - 房天下资讯               → 地产
+const ZH_RSS_SOURCES_SECTOR: Record<string, { url: string; label: string }[]> = {
+  semiconductor: [
+    { url: 'https://www.jiemian.com/lists/11.rss',                     label: '界面·科技' },
+    { url: 'https://36kr.com/feed/column/100007',                      label: '36氪·硬科技' },
+  ],
+  ai: [
+    { url: 'https://36kr.com/feed/column/100006',                      label: '36氪·人工智能' },
+    { url: 'https://www.tmtpost.com/tag/AI/feed',                      label: '钛媒体·AI' },
+  ],
+  newenergy: [
+    { url: 'https://news.bjx.com.cn/rss/',                             label: '北极星电力网' },
+    { url: 'https://www.ne21.com/rss/news.xml',                        label: '北极星新能源' },
+  ],
+  metals: [
+    { url: 'https://news.mysteel.com/rss.xml',                         label: 'Mysteel钢铁' },
+    { url: 'https://www.smm.cn/rss.xml',                               label: 'SMM有色' },
+  ],
+  pharma: [
+    { url: 'https://www.cn-healthcare.com/rss/all.xml',                label: '健康界' },
+    { url: 'https://www.yicai.com/rss/health.xml',                     label: '第一财经·健康' },
+  ],
+  agriculture: [
+    { url: 'http://www.feedtrade.com.cn/rss.xml',                      label: '饲料行业信息' },
+    { url: 'https://www.nczd.com/rss/',                                 label: '农财宝典' },
+  ],
+  energy: [
+    { url: 'https://www.china-nengyuan.com/rss.xml',                   label: '能源界' },
+    { url: 'http://rss.sina.com.cn/finance/energy.xml',                label: '新浪·能源' },
+  ],
+  chemicals: [
+    { url: 'http://www.chemnet.com.cn/rss/news.xml',                   label: '中国化工网' },
+    { url: 'https://www.ccin.com.cn/rss',                              label: '中化新网' },
+  ],
+  realestate: [
+    { url: 'https://www.fang.com/rss/news.xml',                        label: '房天下·资讯' },
+    { url: 'http://rss.sina.com.cn/estate/new.xml',                    label: '新浪·房产' },
+  ],
+  transport: [
+    { url: 'http://rss.sina.com.cn/finance/logistic.xml',              label: '新浪·物流' },
+  ],
+}
+
+// 合并后对外使用：通用 + 所有垂直板块（批量预热时全拉；按板块查询时还可精确过滤）
+const ZH_RSS_SOURCES = [
+  ...ZH_RSS_SOURCES_GENERAL,
+  ...Object.values(ZH_RSS_SOURCES_SECTOR).flat(),
 ]
 
 // ─── 主入口 ───────────────────────────────────────────────────────────────────
@@ -336,7 +471,7 @@ async function _fetchChineseNewsRaw(): Promise<CNewsItem[]> {
     const bg = bigrams(item.title)
     let matched = -1
     for (let i = 0; i < keptBigrams.length; i++) {
-      if (jaccardSim(bg, keptBigrams[i]) > 0.45) { matched = i; break }
+      if (jaccardSim(bg, keptBigrams[i]) > 0.35) { matched = i; break }
     }
     if (matched === -1) {
       kept.push(item)

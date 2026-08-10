@@ -13,6 +13,7 @@ interface SectorSentiment {
   summary: string
   drivers: string[]
   topNews: { title: string; url: string; source: string; pubDate: string }[]
+  status?: 'ok' | 'unavailable' | 'insufficient_data'
 }
 
 // ── localStorage 缓存（2h 过期，情绪分析变化慢） ──────────────────────────────
@@ -152,7 +153,7 @@ export default function SentimentPage() {
 
   // 仅重试失败板块
   async function retryFailed() {
-    const failed = data.filter(s => s.summary.includes('失败') || s.summary.includes('解析'))
+    const failed = data.filter(s => s.status === 'unavailable')
     if (!failed.length) return
     setRefreshing(true)
     try {
@@ -201,7 +202,7 @@ export default function SentimentPage() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {data.some(s => s.summary.includes('失败')) && (
+            {data.some(s => s.status === 'unavailable') && (
               <button
                 onClick={retryFailed}
                 disabled={refreshing}
@@ -283,52 +284,72 @@ export default function SentimentPage() {
         {/* 板块卡片网格 */}
         {tab === 'current' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
           {data.map(s => {
-            const c = scoreColor(s.score)
+            const isUnavailable = s.status === 'unavailable'
+            const isInsufficient = s.status === 'insufficient_data'
+            const c = isUnavailable
+              ? { bg: '#111', text: '#4b5563', border: '#2a2a2a' }
+              : scoreColor(s.score)
             const isOpen = expanded === s.id
             return (
               <div
                 key={s.id}
-                onClick={() => setExpanded(isOpen ? null : s.id)}
-                style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 10, padding: 16, cursor: 'pointer', transition: 'transform 0.15s' }}
-                onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')}
+                onClick={() => !isUnavailable && setExpanded(isOpen ? null : s.id)}
+                style={{
+                  background: c.bg, border: `1px solid ${c.border}`, borderRadius: 10, padding: 16,
+                  cursor: isUnavailable ? 'default' : 'pointer', transition: 'transform 0.15s',
+                  opacity: isUnavailable ? 0.6 : 1,
+                }}
+                onMouseEnter={e => !isUnavailable && (e.currentTarget.style.transform = 'translateY(-2px)')}
                 onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}
               >
                 {/* 头部 */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ color: c.text }}><ScoreIcon score={s.score} /></span>
+                    <span style={{ color: c.text }}>{isUnavailable ? <Minus size={18} /> : <ScoreIcon score={s.score} />}</span>
                     <span style={{ fontSize: 16, fontWeight: 700 }}>{s.name}</span>
                   </div>
                   <span style={{ fontSize: 22, fontWeight: 800, color: c.text }}>
-                    {s.score > 0 ? '+' : ''}{s.score}
+                    {isUnavailable ? 'N/A' : `${s.score > 0 ? '+' : ''}${s.score}`}
                   </span>
                 </div>
 
                 {/* 标签行 */}
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-                  <span style={{ background: `${c.border}33`, color: c.text, padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                    {s.label}
-                  </span>
-                  <ConfidenceBadge c={s.confidence} />
+                  {isUnavailable ? (
+                    <span style={{ background: '#1f1f1f', color: '#4b5563', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                      分析失败
+                    </span>
+                  ) : (
+                    <>
+                      <span style={{ background: `${c.border}33`, color: c.text, padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                        {s.label}
+                      </span>
+                      {!isInsufficient && <ConfidenceBadge c={s.confidence} />}
+                    </>
+                  )}
                   <span style={{ fontSize: 11, color: '#6b7280' }}>{s.newsCount} 条资讯</span>
                 </div>
 
                 {/* 摘要 */}
-                <p style={{ margin: '0 0 10px', fontSize: 13, lineHeight: 1.5, color: '#d1d5db' }}>{s.summary}</p>
+                <p style={{ margin: '0 0 10px', fontSize: 13, lineHeight: 1.5, color: isUnavailable ? '#4b5563' : '#d1d5db' }}>
+                  {isUnavailable ? '数据暂不可用，点击右上角"重试失败板块"' : s.summary}
+                </p>
 
-                {/* 评分条 */}
-                <div style={{ height: 6, background: '#1f1f1f', borderRadius: 3, overflow: 'hidden', marginBottom: 10, position: 'relative' }}>
-                  <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#4b5563', zIndex: 1 }} />
-                  <div style={{
-                    position: 'absolute', top: 0, bottom: 0,
-                    [s.score >= 0 ? 'left' : 'right']: '50%',
-                    width: `${Math.abs(s.score) / 2}%`,
-                    background: c.text, transition: 'width 0.3s',
-                  }} />
-                </div>
+                {/* 评分条（失败时不显示） */}
+                {!isUnavailable && (
+                  <div style={{ height: 6, background: '#1f1f1f', borderRadius: 3, overflow: 'hidden', marginBottom: 10, position: 'relative' }}>
+                    <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: '#4b5563', zIndex: 1 }} />
+                    <div style={{
+                      position: 'absolute', top: 0, bottom: 0,
+                      [s.score >= 0 ? 'left' : 'right']: '50%',
+                      width: `${Math.abs(s.score) / 2}%`,
+                      background: c.text, transition: 'width 0.3s',
+                    }} />
+                  </div>
+                )}
 
                 {/* 驱动因素 */}
-                {s.drivers.length > 0 && (
+                {!isUnavailable && s.drivers.length > 0 && (
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {s.drivers.map((d, i) => (
                       <span key={i} style={{ background: '#1f1f1f', color: '#9ca3af', padding: '3px 8px', borderRadius: 4, fontSize: 11, border: '1px solid #2a2a2a' }}>

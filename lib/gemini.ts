@@ -91,21 +91,26 @@ confidence: 资讯>=8且一致=high；3-7条或部分矛盾=med；<3条或严重
   return out
 }
 
+export type SentimentStatus = 'ok' | 'unavailable' | 'insufficient_data'
+
+export interface SectorSentimentResult {
+  score: number
+  label: '看多' | '偏多' | '中性' | '偏空' | '看空'
+  confidence: 'high' | 'med' | 'low'
+  summary: string
+  drivers: string[]
+  status: SentimentStatus
+}
+
 /**
  * 分析单个板块的市场情绪
  */
 export async function analyzeSectorSentiment(
   sectorName: string,
   articles: { title: string; content: string }[]
-): Promise<{
-  score: number
-  label: '看多' | '偏多' | '中性' | '偏空' | '看空'
-  confidence: 'high' | 'med' | 'low'
-  summary: string
-  drivers: string[]
-}> {
+): Promise<SectorSentimentResult> {
   if (!articles.length) {
-    return { score: 0, label: '中性', confidence: 'low', summary: '暂无足够资讯', drivers: [] }
+    return { score: 0, label: '中性', confidence: 'low', summary: '暂无足够资讯', drivers: [], status: 'insufficient_data' }
   }
   const articleList = articles
     .slice(0, 8)
@@ -138,7 +143,7 @@ confidence 取决于资讯数量与一致性：>=8条且一致=high；3-7条或�
   const raw = await chat(prompt, { model: 'deepseek-chat', temperature: 0.3, maxTokens: 1024 })
   const jsonMatch = raw.match(/\{[\s\S]*\}/)
   if (!jsonMatch) {
-    return { score: 0, label: '中性', confidence: 'low', summary: 'AI解析失败', drivers: [] }
+    return { score: 0, label: '中性', confidence: 'low', summary: 'AI解析失败', drivers: [], status: 'unavailable' }
   }
   try {
     const parsed = JSON.parse(jsonMatch[0])
@@ -148,8 +153,9 @@ confidence 取决于资讯数量与一致性：>=8条且一致=high；3-7条或�
       confidence: parsed.confidence || 'low',
       summary: String(parsed.summary || '').slice(0, 60),
       drivers: Array.isArray(parsed.drivers) ? parsed.drivers.slice(0, 4).map(String) : [],
+      status: 'ok',
     }
   } catch {
-    return { score: 0, label: '中性', confidence: 'low', summary: 'AI解析失败', drivers: [] }
+    return { score: 0, label: '中性', confidence: 'low', summary: 'AI解析失败', drivers: [], status: 'unavailable' }
   }
 }

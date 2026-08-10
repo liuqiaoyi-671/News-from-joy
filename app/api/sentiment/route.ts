@@ -31,6 +31,7 @@ interface SectorSentiment {
   summary: string
   drivers: string[]
   topNews: { title: string; url: string; source: string; pubDate: string }[]
+  status: 'ok' | 'unavailable' | 'insufficient_data'
 }
 
 // ── 进程级三层守门缓存 ─────────────────────────────────────────────────────────
@@ -50,7 +51,6 @@ async function analyzeOneCached(sec: { id: string; name: string }): Promise<Sect
       sec.name,
       top.map(n => ({ title: n.title, content: n.content || '' })),
     )
-    if (!sentiment.summary || sentiment.summary === 'AI解析失败') throw new Error('parse_failed')
     return {
       id: sec.id, name: sec.name, newsCount: news.length, ...sentiment,
       topNews: top.slice(0, 5).map(n => ({
@@ -120,6 +120,7 @@ async function analyzeAllBatched(): Promise<SectorSentiment[]> {
         id: sec.id, name: sec.name, newsCount: news.length,
         score: 0, label: '中性', confidence: 'low',
         summary: 'AI 调用失败，请刷新重试', drivers: [],
+        status: 'unavailable' as const,
         topNews: top.slice(0, 5).map(n => ({
           title: n.title, url: n.url, source: n.source || '', pubDate: n.pubDate || '',
         })),
@@ -129,6 +130,7 @@ async function analyzeAllBatched(): Promise<SectorSentiment[]> {
       id: sec.id, name: sec.name, newsCount: news.length,
       score: s.score, label: s.label, confidence: s.confidence,
       summary: s.summary, drivers: s.drivers,
+      status: (news.length === 0 ? 'insufficient_data' : 'ok') as SectorSentiment['status'],
       topNews: top.slice(0, 5).map(n => ({
         title: n.title, url: n.url, source: n.source || '', pubDate: n.pubDate || '',
       })),
