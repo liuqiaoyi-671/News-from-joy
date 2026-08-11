@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{}"
+self.__REACT_LOADABLE_MANIFEST="{\"components/DetailModal.tsx -> ./FullChart\":{\"id\":\"components/DetailModal.tsx -> ./FullChart\",\"files\":[\"static/chunks/_app-pages-browser_components_FullChart_tsx.js\"]}}"
